@@ -35,6 +35,9 @@ import {
 import {
   createPingIdentityConfig,
 } from '@infrastructure/config/idp-configs/pingidentity.config';
+import {
+  createEnvIdPConfig,
+} from '@infrastructure/config/idp-configs/env-idp.config';
 import type { IdPConfig } from '@shared/types/saml.types';
 
 /**
@@ -279,6 +282,14 @@ export async function buildApp(
     );
     await samlConfigRepo.save(pingConfig);
     registerIdPSafe(pingConfig);
+
+    // IdP genérico declarado por entorno (bring your own IdP). Permite conectar
+    // un IdP real publicando su certificado de firma y sus URLs sin tocar código.
+    const envIdPConfig = createEnvIdPConfig();
+    if (envIdPConfig) {
+      await samlConfigRepo.save(envIdPConfig);
+      registerIdPSafe(envIdPConfig);
+    }
 
     // IdP adicionales inyectados por el llamador (p. ej. e2e). En producción
     // no se pasan, por lo que el comportamiento por defecto no cambia.

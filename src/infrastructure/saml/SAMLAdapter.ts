@@ -75,10 +75,7 @@ export class SAMLAdapter implements ISAMLValidator {
 
   registerIdP(idpConfig: IdPConfig): void {
     try {
-      const metadata = this.loadIdPMetadata(idpConfig);
-      const idp = IdentityProvider({
-        metadata,
-      });
+      const idp = this.buildIdentityProvider(idpConfig);
 
       this.idps.set(idpConfig.id, {
         idp,
@@ -89,6 +86,59 @@ export class SAMLAdapter implements ISAMLValidator {
         `Failed to register IdP ${idpConfig.id}: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
+  }
+
+  // Construye el IdentityProvider de samlify a partir del material disponible.
+  // Un IdP real (Okta, Azure AD, etc.) entrega típicamente o bien su metadata
+  // SAML completo (XML con EntityDescriptor) o bien un certificado de firma
+  // X.509 acompañado de su entityID y su URL de SSO. Soportamos ambos:
+  //  - metadata XML: se pasa tal cual a samlify.
+  //  - certificado de firma: se reconstruye el IdP desde sus componentes.
+  private buildIdentityProvider(idpConfig: IdPConfig): any {
+    const material = this.loadIdPMetadata(idpConfig).trim();
+
+    if (material.includes('EntityDescriptor')) {
+      return IdentityProvider({ metadata: material });
+    }
+
+    // El material es un certificado de firma pelado (PEM/base64). Necesitamos
+    // los datos de protocolo que un IdP real publica junto a su certificado.
+    if (!idpConfig.entityID || !idpConfig.singleSignOnServiceUrl) {
+      throw new Error(
+        'IdP configured with a bare signing certificate requires entityID and singleSignOnServiceUrl'
+      );
+    }
+
+    const ssoServices = [
+      {
+        Binding: Constants.namespace.binding.redirect,
+        Location: idpConfig.singleSignOnServiceUrl,
+      },
+      {
+        Binding: Constants.namespace.binding.post,
+        Location: idpConfig.singleSignOnServiceUrl,
+      },
+    ];
+
+    const sloServices = idpConfig.singleLogoutServiceUrl
+      ? [
+          {
+            Binding: Constants.namespace.binding.redirect,
+            Location: idpConfig.singleLogoutServiceUrl,
+          },
+        ]
+      : undefined;
+
+    return IdentityProvider({
+      entityID: idpConfig.entityID,
+      signingCert: material,
+      singleSignOnService: ssoServices,
+      ...(sloServices ? { singleLogoutService: sloServices } : {}),
+      nameIDFormat: [
+        idpConfig.identifierFormat ||
+          'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+      ],
+    });
   }
 
   generateSAMLRequest(idpName: string): {
