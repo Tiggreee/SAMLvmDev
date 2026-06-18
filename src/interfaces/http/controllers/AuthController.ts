@@ -60,8 +60,14 @@ export class AuthController {
         });
       }
 
-      // Obtener IdP del request o sesión
-      const idp = (request.query as any)?.idp || request.session?.idp;
+      // Determinar el IdP: parámetro explícito o sesión (flujo SP-initiated) y,
+      // como respaldo, descubrirlo por el Issuer de la propia respuesta (flujo
+      // IdP-initiated / ACS multi-tenant: el IdP da clic en su panel y postea
+      // aquí sin `idp` ni sesión previa).
+      const idp =
+        (request.query as any)?.idp ||
+        request.session?.idp ||
+        this.ssoAuthService.resolveIdPByIssuer(SAMLResponse);
       if (!idp) {
         return reply.status(400).send({
           error: 'Missing IdP information',

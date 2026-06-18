@@ -39,6 +39,13 @@ export class SSOAuthenticationService {
     return this.initiateSSOLogin.execute(idpName);
   }
 
+  // Descubre el IdP emisor de una respuesta SAML por su Issuer. Habilita el
+  // flujo IdP-initiated (un único ACS multi-tenant) cuando no llega el parámetro
+  // `idp` por query ni hay sesión previa. Devuelve null si ningún IdP coincide.
+  resolveIdPByIssuer(samlResponse: string): string | null {
+    return this.samlAdapter.resolveIdPByIssuer(samlResponse);
+  }
+
   async processSAMLResponseAndCreateSession(
     samlResponse: string,
     idpName: string,

@@ -88,6 +88,63 @@ export class SAMLAdapter implements ISAMLValidator {
     }
   }
 
+  // Resuelve a qué IdP registrado pertenece una respuesta SAML leyendo el
+  // emisor (Issuer) de la assertion y casándolo contra el entityID de los IdP
+  // conocidos. Permite el flujo IdP-initiated y un único ACS multi-tenant: el
+  // IdP correcto se descubre a partir de la propia respuesta, sin necesidad de
+  // recibir el parámetro `idp` por query ni de una sesión previa.
+  //
+  // No verifica la firma (eso lo hace validateSAMLResponse después con el IdP
+  // ya resuelto): solo inspecciona el XML para enrutar. Una respuesta cuyo
+  // Issuer no coincida con ningún IdP registrado devuelve null y el llamador
+  // debe rechazarla.
+  resolveIdPByIssuer(encodedSAMLResponse: string): string | null {
+    const issuer = this.extractIssuer(encodedSAMLResponse);
+    if (!issuer) {
+      return null;
+    }
+
+    for (const [id, { config }] of this.idps) {
+      if (config.entityID === issuer) {
+        return id;
+      }
+    }
+
+    return null;
+  }
+
+  private extractIssuer(encodedSAMLResponse: string): string | null {
+    let xml: string;
+    try {
+      xml = Buffer.from(encodedSAMLResponse, 'base64').toString('utf-8');
+    } catch {
+      return null;
+    }
+
+    let doc: Document | null;
+    try {
+      doc = new DOMParser().parseFromString(xml, 'text/xml');
+    } catch {
+      return null;
+    }
+
+    if (!doc || !doc.documentElement) {
+      return null;
+    }
+
+    // El Issuer de nivel Response identifica al IdP emisor. Aceptamos cualquier
+    // prefijo de namespace (saml:Issuer, Issuer, etc.) buscando por nombre local.
+    const issuers = doc.getElementsByTagNameNS(
+      'urn:oasis:names:tc:SAML:2.0:assertion',
+      'Issuer'
+    );
+    const issuerNode =
+      issuers.length > 0 ? issuers[0] : doc.getElementsByTagName('Issuer')[0];
+
+    const value = issuerNode?.textContent?.trim();
+    return value ? value : null;
+  }
+
   // Construye el IdentityProvider de samlify a partir del material disponible.
   // Un IdP real (Okta, Azure AD, etc.) entrega típicamente o bien su metadata
   // SAML completo (XML con EntityDescriptor) o bien un certificado de firma
