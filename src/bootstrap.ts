@@ -79,9 +79,19 @@ export async function createFastifyServer(): Promise<FastifyInstance> {
     sessionStore = undefined;
   }
 
+  // El secreto de sesión debe tener al menos 32 caracteres (requisito de
+  // @fastify/session). En producción es obligatorio definirlo; en desarrollo
+  // se usa un placeholder con la longitud mínima.
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (isProduction && (!sessionSecret || sessionSecret.length < 32)) {
+    throw new Error(
+      'SESSION_SECRET es obligatorio en producción y debe tener al menos 32 caracteres'
+    );
+  }
+
   await fastify.register(fastifySession, {
     ...(sessionStore ? { store: sessionStore } : {}),
-    secret: process.env.SESSION_SECRET || 'dev-secret-key',
+    secret: sessionSecret || 'dev-session-secret-change-me-please-32',
     cookie: {
       maxAge: parseInt(process.env.SESSION_TTL || '86400') * 1000,
       secure: process.env.HTTPS_ONLY === 'true',

@@ -34,6 +34,14 @@ jobs:
       - name: Smoke check
         run: npm run test:smoke
 
+      - name: Generate development certificates
+        run: npm run generate:certs
+
+      - name: Behavior tests (e2e)
+        run: npm run test:e2e
+        env:
+          NODE_ENV: test
+
       - name: Governance - Copilot agents watch-only
         run: npm run check:copilot:agents
 

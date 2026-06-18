@@ -1,6 +1,8 @@
 // Punto de entrada principal
 
 import 'dotenv/config';
+import { fileURLToPath } from 'url';
+import type { FastifyInstance } from 'fastify';
 import { createFastifyServer, startServer } from './bootstrap';
 import { authRoutes } from '@interfaces/http/routes/authRoutes';
 import { AuthController } from '@interfaces/http/controllers/AuthController';
@@ -110,10 +112,9 @@ class MockAuditLogRepository {
   }
 }
 
-async function bootstrap() {
-  try {
-    // Crear servidor Fastify
-    const fastify = await createFastifyServer();
+export async function buildApp(): Promise<FastifyInstance> {
+  // Crear servidor Fastify
+  const fastify = await createFastifyServer();
 
     // Inicializar repositorios (mock)
     const samlConfigRepo = new MockSAMLConfigRepository();
@@ -201,7 +202,12 @@ async function bootstrap() {
       await authRoutes(fastify, authController);
     });
 
-    // Iniciar servidor
+    return fastify;
+}
+
+async function start(): Promise<void> {
+  try {
+    const fastify = await buildApp();
     await startServer(fastify);
   } catch (error) {
     console.error('Failed to start server:', error);
@@ -209,4 +215,7 @@ async function bootstrap() {
   }
 }
 
-bootstrap();
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) {
+  void start();
+}
