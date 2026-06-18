@@ -1,6 +1,6 @@
 // Configuración Fastify
 
-import Fastify, { FastifyInstance } from 'fastify';
+import Fastify, { FastifyInstance, FastifyError } from 'fastify';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyCors from '@fastify/cors';
 import fastifySession from '@fastify/session';
@@ -82,7 +82,7 @@ export async function createFastifyServer(): Promise<FastifyInstance> {
   });
 
   // Global Error Handler
-  fastify.setErrorHandler((error, request, reply) => {
+  fastify.setErrorHandler((error: FastifyError, request, reply) => {
     fastify.log.error({
       error,
       url: request.url,
