@@ -20,8 +20,8 @@
     "check:tracked:no-external-repos": "bash scripts/check-tracked-no-external-repos.sh",
     "check:tracked:no-ai-artifacts": "bash scripts/check-tracked-no-ai-artifacts.sh",
     "prod:gate": "node scripts/production-go-no-go.mjs",
-    "generate:certs": "ts-node scripts/generate-certificates.ts",
-    "generate:metadata": "ts-node scripts/generate-metadata.ts"
+    "generate:certs": "tsx scripts/generate-certificates.ts",
+    "generate:metadata": "tsx scripts/generate-metadata.ts"
   },
   "keywords": [
     "SAML",
