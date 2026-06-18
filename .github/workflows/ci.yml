@@ -42,6 +42,11 @@ jobs:
         env:
           NODE_ENV: test
 
+      - name: Integration tests (pg-mem)
+        run: npm run test:integration
+        env:
+          NODE_ENV: test
+
       - name: Governance - Copilot agents watch-only
         run: npm run check:copilot:agents
 
