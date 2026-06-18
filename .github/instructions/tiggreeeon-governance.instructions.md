@@ -11,7 +11,7 @@ Governance:
 - Escalate only for legal/compliance, fraud, or policy exceptions.
 
 Evidence and gates:
-- Keep production baseline evidence at `ops/runtime/production-go-no-go-report.md`.
+- Generate the go/no-go report at `ops/runtime/production-go-no-go-report.md` (not versioned; published as a CI artifact).
 - Run mandatory validations on protected-surface changes:
   1. `npm run test:smoke`
   2. `npm run build:server`

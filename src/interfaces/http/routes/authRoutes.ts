@@ -7,51 +7,47 @@ export async function authRoutes(
   fastify: FastifyInstance,
   authController: AuthController
 ) {
-  /**
-   * Endpoint para iniciar login SSO
-   * GET /auth/saml/login?idp=azure-ad
-   */
-  fastify.get('/auth/saml/login', async (request, reply) => {
-    return authController.initiateLogin(request, reply);
-  });
+  // Contrato canónico: /saml/*
+  // Alias de compatibilidad: /auth/saml/* (deprecado, conservado para no romper integraciones existentes)
+  const canonical = '/saml';
+  const legacy = '/auth/saml';
 
-  /**
-   * Assertion Consumer Service - POST de vuelta del IdP
-   * POST /auth/saml/acs
-   */
-  fastify.post('/auth/saml/acs', async (request, reply) => {
-    return authController.assertionConsumerService(request, reply);
-  });
+  const register = (
+    method: 'get' | 'post',
+    path: string,
+    handler: (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<unknown>
+  ) => {
+    fastify[method](`${canonical}${path}`, handler);
+    fastify[method](`${legacy}${path}`, handler);
+  };
 
-  /**
-   * Metadata del Service Provider (descargable)
-   * GET /auth/saml/metadata
-   */
-  fastify.get('/auth/saml/metadata', async (request, reply) => {
-    return authController.getMetadata(request, reply);
-  });
+  // Iniciar login SSO — /saml/login?idp=azure-ad
+  register('get', '/login', (request, reply) =>
+    authController.initiateLogin(request, reply)
+  );
 
-  /**
-   * Logout (destruye sesión)
-   * POST /auth/saml/logout
-   */
-  fastify.post('/auth/saml/logout', async (request, reply) => {
-    return authController.logout(request, reply);
-  });
+  // Assertion Consumer Service — /saml/acs
+  register('post', '/acs', (request, reply) =>
+    authController.assertionConsumerService(request, reply)
+  );
 
-  /**
-   * Obtener opciones de login disponibles
-   * GET /auth/saml/login-options
-   */
-  fastify.get('/auth/saml/login-options', async (request, reply) => {
-    return authController.getLoginOptions(request, reply);
-  });
+  // Metadata del Service Provider — /saml/metadata
+  register('get', '/metadata', (request, reply) =>
+    authController.getMetadata(request, reply)
+  );
 
-  /**
-   * Estado del sistema SAML
-   * GET /auth/saml/status
-   */
-  fastify.get('/auth/saml/status', async (request, reply) => {
-    return authController.getStatus(request, reply);
-  });
+  // Single Logout — /saml/slo
+  register('post', '/slo', (request, reply) =>
+    authController.logout(request, reply)
+  );
+
+  // Opciones de login disponibles — /saml/login-options
+  register('get', '/login-options', (request, reply) =>
+    authController.getLoginOptions(request, reply)
+  );
+
+  // Estado del sistema SAML — /saml/status
+  register('get', '/status', (request, reply) =>
+    authController.getStatus(request, reply)
+  );
 }

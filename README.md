@@ -122,11 +122,10 @@ Recibe el SAMLResponse, valida firma, condiciones y atributos, y establece sesi�
 ### GET /saml/slo
 Single Logout opcional.
 
-### Estado actual del código
-- Implementado hoy bajo prefijo /auth/saml/*.
-- Existe metadata y ACS en /auth/saml/metadata y /auth/saml/acs.
-- El flujo de logout actual usa POST /auth/saml/logout.
-- Si quieres enforcing estricto en /saml/*, la siguiente iteración es crear alias /saml/metadata, /saml/acs y /saml/slo y deprecación gradual de /auth/saml/*.
+### Compatibilidad de rutas
+- El contrato canónico es `/saml/*` (`/saml/metadata`, `/saml/acs`, `/saml/slo`, `/saml/login`, `/saml/login-options`, `/saml/status`).
+- Se mantienen alias `/auth/saml/*` apuntando a los mismos handlers para no romper integraciones previas.
+- Los alias `/auth/saml/*` quedan deprecados y podrán retirarse en una versión mayor futura.
 
 ## Flujo SAML soportado
 

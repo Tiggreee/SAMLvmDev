@@ -168,15 +168,7 @@ export class AuthController {
       await this.auditService.logLogout(userId, idp, ipAddress);
 
       // Destruir sesión
-      await new Promise<void>((resolve, reject) => {
-        request.destroySession((err) => {
-          if (err) {
-            reject(err);
-            return;
-          }
-          resolve();
-        });
-      });
+      await request.session.destroy();
 
       return reply.status(200).send({
         success: true,

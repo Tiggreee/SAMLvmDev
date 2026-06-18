@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-gates:
+    name: Build and governance gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build server
+        run: npm run build:server
+
+      - name: Smoke check
+        run: npm run test:smoke
+
+      - name: Governance - Copilot agents watch-only
+        run: npm run check:copilot:agents
+
+      - name: Governance - no external repositories
+        run: npm run check:tracked:no-external-repos
+
+      - name: Governance - no AI artifacts
+        run: npm run check:tracked:no-ai-artifacts
+
+      - name: Production go/no-go gate
+        run: npm run prod:gate
+
+      - name: Publish go/no-go report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-go-no-go-report
+          path: ops/runtime/production-go-no-go-report.md
+          if-no-files-found: ignore

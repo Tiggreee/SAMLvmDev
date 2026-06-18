@@ -40,7 +40,10 @@ For `.github/copilot/agents/**/*.yaml`:
 
 ## Production Evidence
 
-Baseline evidence report path:
+The go/no-go report is generated on demand by `npm run prod:gate`.
+It is not versioned; CI publishes it as a build artifact.
+
+Output path:
 - `ops/runtime/production-go-no-go-report.md`
 
 Do not bypass failing gates or silently degrade controls.

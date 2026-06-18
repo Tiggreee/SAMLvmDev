@@ -20,4 +20,4 @@ Purpose: determine go/no-go readiness with auditable evidence.
 
 - GO only if all required checks pass.
 - NO-GO if any required check fails.
-- Persist results in `ops/runtime/production-go-no-go-report.md`.
+- Write results to `ops/runtime/production-go-no-go-report.md` (generated output, not versioned).

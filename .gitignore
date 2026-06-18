@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
@@ -45,3 +44,6 @@ npm-debug.log*
 # Temporary
 tmp/
 temp/
+
+# Generated evidence (produced on demand / in CI, not versioned)
+ops/runtime/production-go-no-go-report.md

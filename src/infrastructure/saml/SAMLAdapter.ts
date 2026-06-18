@@ -41,8 +41,7 @@ export class SAMLAdapter {
       isAssertionEncrypted: true,
       encPrivateKey: this.spKey,
       wantAssertionsSigned: true,
-      signatureAlgorithm: Constants.algorithms.signature.RSA_SHA256,
-      digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256',
+      requestSignatureAlgorithm: Constants.algorithms.signature.RSA_SHA256,
     });
   }
 
