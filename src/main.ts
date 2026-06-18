@@ -12,7 +12,9 @@ import { SAMLMetadataService } from '@application/services/SAMLMetadataService';
 import { AuditService } from '@application/services/AuditService';
 import { createPostgresPool } from '@infrastructure/persistence/database/PostgresPool';
 import { PostgresAuditLogRepository } from '@infrastructure/persistence/repositories/PostgresAuditLogRepository';
-import type { IAuditLogRepository } from '@domain/saml/repositories/SAMLRepositories';
+import { connectRedis, buildRedisUrl } from '@infrastructure/persistence/redis/RedisClient';
+import { RedisSessionRepository } from '@infrastructure/persistence/repositories/RedisSessionRepository';
+import type { IAuditLogRepository, ISessionRepository } from '@domain/saml/repositories/SAMLRepositories';
 import {
   createAzureADConfig,
 } from '@infrastructure/config/idp-configs/azure-ad.config';
@@ -169,15 +171,42 @@ async function createAuditLogRepository(
   }
 }
 
+/**
+ * Crea el repositorio de sesiones SAML. Usa Redis para persistencia compartida
+ * entre instancias; en su ausencia, en desarrollo cae a memoria, mientras que
+ * en producción es un error de configuración.
+ */
+async function createSessionRepository(
+  fastify: FastifyInstance
+): Promise<ISessionRepository> {
+  const isProduction = process.env.NODE_ENV === 'production';
+  try {
+    const redis = await connectRedis(buildRedisUrl());
+    fastify.addHook('onClose', async () => {
+      await redis.close();
+    });
+    return new RedisSessionRepository(redis.client);
+  } catch (error) {
+    if (isProduction) {
+      throw error;
+    }
+    fastify.log.warn(
+      `Redis no disponible (${
+        error instanceof Error ? error.message : 'error desconocido'
+      }): usando sesiones en memoria (solo desarrollo)`
+    );
+    return new MockSessionRepository();
+  }
+}
+
 export async function buildApp(
   options: BuildAppOptions = {}
 ): Promise<FastifyInstance> {
-  // Crear servidor Fastify
   const fastify = await createFastifyServer();
 
     // Inicializar repositorios (mock)
     const samlConfigRepo = new MockSAMLConfigRepository();
-    const sessionRepo = new MockSessionRepository();
+    const sessionRepo = await createSessionRepository(fastify);
     const auditLogRepo = await createAuditLogRepository(fastify);
 
     // Registrar IdP configurados
