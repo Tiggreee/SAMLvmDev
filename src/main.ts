@@ -130,38 +130,52 @@ async function bootstrap() {
     // Crear adaptador SAML
     const samlAdapter = new SAMLAdapter(spEntityId, acsUrl, sloUrl);
 
+    // Registrar IdP de forma tolerante: un IdP mal configurado (por ejemplo,
+    // sin su certificado) no debe impedir el arranque del gateway.
+    const registerIdPSafe = (config: { id: string }): void => {
+      try {
+        samlAdapter.registerIdP(config as never);
+      } catch (error) {
+        console.warn(
+          `IdP no registrado (${config.id}): ${
+            error instanceof Error ? error.message : 'error desconocido'
+          }`
+        );
+      }
+    };
+
     // Registrar IdP disponibles
     const azureAdConfig = createAzureADConfig(
       process.env.AZURE_AD_TENANT_ID || 'default-tenant',
       process.env.AZURE_AD_APP_ID || 'default-app'
     );
     await samlConfigRepo.save(azureAdConfig);
-    samlAdapter.registerIdP(azureAdConfig);
+    registerIdPSafe(azureAdConfig);
 
     const oktaConfig = createOktaConfig(
       process.env.OKTA_DOMAIN || 'dev-12345.okta.com',
       process.env.OKTA_APP_ID || 'exkdefault'
     );
     await samlConfigRepo.save(oktaConfig);
-    samlAdapter.registerIdP(oktaConfig);
+    registerIdPSafe(oktaConfig);
 
     const googleConfig = createGoogleWorkspaceConfig();
     await samlConfigRepo.save(googleConfig);
-    samlAdapter.registerIdP(googleConfig);
+    registerIdPSafe(googleConfig);
 
     const oneloginConfig = createOneLoginConfig(
       process.env.ONELOGIN_SUBDOMAIN || 'dev',
       process.env.ONELOGIN_APP_ID || 'default'
     );
     await samlConfigRepo.save(oneloginConfig);
-    samlAdapter.registerIdP(oneloginConfig);
+    registerIdPSafe(oneloginConfig);
 
     const pingConfig = createPingIdentityConfig(
       process.env.PINGONE_ENVIRONMENT_ID || 'default-env',
       process.env.PINGONE_APPLICATION_ID || 'default-app'
     );
     await samlConfigRepo.save(pingConfig);
-    samlAdapter.registerIdP(pingConfig);
+    registerIdPSafe(pingConfig);
 
     // Crear servicios
     const ssoAuthService = new SSOAuthenticationService(

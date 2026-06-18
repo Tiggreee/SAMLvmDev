@@ -59,19 +59,28 @@ export async function createFastifyServer(): Promise<FastifyInstance> {
     process.env.REDIS_PASSWORD ? `:${process.env.REDIS_PASSWORD}@` : ''
   }${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || '6379'}/${process.env.REDIS_DB || '0'}`;
 
-  const redisClient = redis.createClient({
-    url: redisUrl,
-  });
+  const isProduction = process.env.NODE_ENV === 'production';
+  let sessionStore: InstanceType<typeof RedisStore> | undefined;
 
-  await redisClient.connect();
-
-  const redisStore = new RedisStore({
-    client: redisClient,
-    prefix: 'session:',
-  });
+  try {
+    const redisClient = redis.createClient({ url: redisUrl });
+    await redisClient.connect();
+    sessionStore = new RedisStore({
+      client: redisClient,
+      prefix: 'session:',
+    });
+  } catch (error) {
+    if (isProduction) {
+      throw error;
+    }
+    fastify.log.warn(
+      'Redis no disponible: usando almacén de sesión en memoria (solo desarrollo)'
+    );
+    sessionStore = undefined;
+  }
 
   await fastify.register(fastifySession, {
-    store: redisStore,
+    ...(sessionStore ? { store: sessionStore } : {}),
     secret: process.env.SESSION_SECRET || 'dev-secret-key',
     cookie: {
       maxAge: parseInt(process.env.SESSION_TTL || '86400') * 1000,

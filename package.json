@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "build": "tsc",
+    "build": "tsc && tsc-alias",
     "build:server": "npm run build",
     "start": "node dist/main.js",
     "test": "vitest",
@@ -63,6 +63,7 @@
     "eslint": "^10.5.0",
     "prettier": "^3.1.1",
     "supertest": "^6.3.3",
+    "tsc-alias": "^1.8.17",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3",
     "vitest": "^4.1.9"
