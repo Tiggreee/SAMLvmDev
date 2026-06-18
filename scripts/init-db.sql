@@ -17,3 +17,18 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id    ON audit_logs (user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type ON audit_logs (event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp  ON audit_logs (timestamp);
+
+CREATE TABLE IF NOT EXISTS idp_configs (
+  id                  TEXT    PRIMARY KEY,
+  name                TEXT    NOT NULL,
+  entity_id           TEXT    NOT NULL,
+  sso_url             TEXT    NOT NULL,
+  slo_url             TEXT,
+  identifier_format   TEXT    NOT NULL,
+  certificate_path    TEXT    NOT NULL,
+  certificate_content TEXT,
+  enabled             BOOLEAN NOT NULL DEFAULT TRUE,
+  attribute_mapping   JSONB,
+  signature_algorithm TEXT,
+  digest_algorithm    TEXT
+);

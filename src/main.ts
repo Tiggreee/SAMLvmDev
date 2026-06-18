@@ -12,9 +12,14 @@ import { SAMLMetadataService } from '@application/services/SAMLMetadataService';
 import { AuditService } from '@application/services/AuditService';
 import { createPostgresPool } from '@infrastructure/persistence/database/PostgresPool';
 import { PostgresAuditLogRepository } from '@infrastructure/persistence/repositories/PostgresAuditLogRepository';
+import { PostgresSAMLConfigRepository } from '@infrastructure/persistence/repositories/PostgresSAMLConfigRepository';
 import { connectRedis, buildRedisUrl } from '@infrastructure/persistence/redis/RedisClient';
 import { RedisSessionRepository } from '@infrastructure/persistence/repositories/RedisSessionRepository';
-import type { IAuditLogRepository, ISessionRepository } from '@domain/saml/repositories/SAMLRepositories';
+import type {
+  IAuditLogRepository,
+  ISessionRepository,
+  ISAMLConfigRepository,
+} from '@domain/saml/repositories/SAMLRepositories';
 import {
   createAzureADConfig,
 } from '@infrastructure/config/idp-configs/azure-ad.config';
@@ -128,36 +133,42 @@ class MockAuditLogRepository {
 }
 
 /**
- * Crea el repositorio de auditoría. Si `DATABASE_URL` está definido se usa
- * PostgreSQL (auditoría duradera); en su ausencia, en desarrollo se cae a un
- * almacén en memoria, mientras que en producción es un error de configuración.
+ * Crea los repositorios respaldados por PostgreSQL (auditoría y configuración
+ * de IdP) sobre un único pool. Si `DATABASE_URL` está definido se usa
+ * PostgreSQL; en su ausencia, en desarrollo se cae a almacenes en memoria,
+ * mientras que en producción es un error de configuración.
  */
-async function createAuditLogRepository(
+async function createPersistence(
   fastify: FastifyInstance
-): Promise<IAuditLogRepository> {
+): Promise<{ audit: IAuditLogRepository; samlConfig: ISAMLConfigRepository }> {
   const databaseUrl = process.env.DATABASE_URL;
   const isProduction = process.env.NODE_ENV === 'production';
 
   if (!databaseUrl) {
     if (isProduction) {
       throw new Error(
-        'DATABASE_URL es obligatorio en producción para la auditoría persistente'
+        'DATABASE_URL es obligatorio en producción para la persistencia (auditoría y configuración de IdP)'
       );
     }
     fastify.log.warn(
-      'DATABASE_URL no definido: usando auditoría en memoria (solo desarrollo)'
+      'DATABASE_URL no definido: usando persistencia en memoria (solo desarrollo)'
     );
-    return new MockAuditLogRepository();
+    return {
+      audit: new MockAuditLogRepository(),
+      samlConfig: new MockSAMLConfigRepository(),
+    };
   }
 
   try {
     const pool = createPostgresPool(databaseUrl);
-    const repo = new PostgresAuditLogRepository(pool);
-    await repo.initialize();
+    const audit = new PostgresAuditLogRepository(pool);
+    await audit.initialize();
+    const samlConfig = new PostgresSAMLConfigRepository(pool);
+    await samlConfig.initialize();
     fastify.addHook('onClose', async () => {
       await pool.end();
     });
-    return repo;
+    return { audit, samlConfig };
   } catch (error) {
     if (isProduction) {
       throw error;
@@ -165,9 +176,12 @@ async function createAuditLogRepository(
     fastify.log.warn(
       `PostgreSQL no disponible (${
         error instanceof Error ? error.message : 'error desconocido'
-      }): usando auditoría en memoria (solo desarrollo)`
+      }): usando persistencia en memoria (solo desarrollo)`
     );
-    return new MockAuditLogRepository();
+    return {
+      audit: new MockAuditLogRepository(),
+      samlConfig: new MockSAMLConfigRepository(),
+    };
   }
 }
 
@@ -204,10 +218,10 @@ export async function buildApp(
 ): Promise<FastifyInstance> {
   const fastify = await createFastifyServer();
 
-    // Inicializar repositorios (mock)
-    const samlConfigRepo = new MockSAMLConfigRepository();
+    // Inicializar repositorios
+    const { audit: auditLogRepo, samlConfig: samlConfigRepo } =
+      await createPersistence(fastify);
     const sessionRepo = await createSessionRepository(fastify);
-    const auditLogRepo = await createAuditLogRepository(fastify);
 
     // Registrar IdP configurados
     const spEntityId = process.env.SAML_SP_ENTITY_ID || 'https://localhost:3000';
