@@ -25,6 +25,16 @@ import {
 import {
   createPingIdentityConfig,
 } from '@infrastructure/config/idp-configs/pingidentity.config';
+import type { IdPConfig } from '@shared/types/saml.types';
+
+/**
+ * Opciones de construcción de la app. `additionalIdPs` permite registrar
+ * proveedores extra (por ejemplo, un IdP de prueba en e2e) sin alterar el
+ * comportamiento de producción cuando no se pasan opciones.
+ */
+export interface BuildAppOptions {
+  additionalIdPs?: IdPConfig[];
+}
 
 // Mock repositories (en producción, usarías BD real)
 class MockSAMLConfigRepository {
@@ -112,7 +122,9 @@ class MockAuditLogRepository {
   }
 }
 
-export async function buildApp(): Promise<FastifyInstance> {
+export async function buildApp(
+  options: BuildAppOptions = {}
+): Promise<FastifyInstance> {
   // Crear servidor Fastify
   const fastify = await createFastifyServer();
 
@@ -177,6 +189,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     );
     await samlConfigRepo.save(pingConfig);
     registerIdPSafe(pingConfig);
+
+    // IdP adicionales inyectados por el llamador (p. ej. e2e). En producción
+    // no se pasan, por lo que el comportamiento por defecto no cambia.
+    for (const extraIdP of options.additionalIdPs ?? []) {
+      await samlConfigRepo.save(extraIdP);
+      registerIdPSafe(extraIdP);
+    }
 
     // Crear servicios
     const ssoAuthService = new SSOAuthenticationService(

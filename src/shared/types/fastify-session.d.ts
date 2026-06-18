@@ -6,7 +6,7 @@ declare module '@fastify/session' {
     idp?: string;
     userId?: string;
     email?: string;
-    sessionId?: string;
+    samlSessionId?: string;
     authenticated?: boolean;
   }
 }

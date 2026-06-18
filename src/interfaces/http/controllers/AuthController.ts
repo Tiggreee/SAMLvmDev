@@ -83,7 +83,7 @@ export class AuthController {
       // Crear sesión segura
       request.session.userId = result.userId;
       request.session.email = result.email;
-      request.session.sessionId = result.sessionId;
+      request.session.samlSessionId = result.sessionId;
       request.session.idp = idp;
       request.session.authenticated = true;
 
@@ -148,7 +148,7 @@ export class AuthController {
    */
   async logout(request: FastifyRequest, reply: FastifyReply) {
     try {
-      const sessionId = request.session?.sessionId;
+      const sessionId = request.session?.samlSessionId;
       const userId = request.session?.userId;
       const idp = request.session?.idp || 'unknown';
 

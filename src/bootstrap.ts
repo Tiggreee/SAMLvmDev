@@ -3,6 +3,7 @@
 import Fastify, { FastifyInstance, FastifyError } from 'fastify';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyCors from '@fastify/cors';
+import fastifyFormbody from '@fastify/formbody';
 import fastifySession from '@fastify/session';
 import fastifyCookie from '@fastify/cookie';
 import RedisStore from 'connect-redis';
@@ -50,6 +51,11 @@ export async function createFastifyServer(): Promise<FastifyInstance> {
     origin: process.env.CORS_ORIGIN?.split(',') || 'http://localhost:3000',
     credentials: true,
   });
+
+  // Cuerpo application/x-www-form-urlencoded: los IdP entregan la respuesta
+  // SAML al ACS mediante un POST form-urlencoded (SAMLResponse, RelayState).
+  // Sin este parser, el ACS rechazaría el POST real del IdP con 415.
+  await fastify.register(fastifyFormbody);
 
   // Cookies
   await fastify.register(fastifyCookie);
