@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  # Aplicación principal SAML SSO
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      SAML_SP_ENTITY_ID: https://localhost:3000
+      SAML_SP_ACS_URL: https://localhost:3000/auth/saml/acs
+      SAML_SP_CERT_PATH: /app/certificates/sp.crt
+      SAML_SP_KEY_PATH: /app/certificates/sp.key
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      DATABASE_URL: postgresql://saml:saml@postgres:5432/saml_sso
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+      LOG_LEVEL: info
+    volumes:
+      - ./certificates:/app/certificates
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - saml-network
+    restart: unless-stopped
+
+  # Redis para sesiones
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - saml-network
+    restart: unless-stopped
+
+  # PostgreSQL para auditoría y datos
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: saml
+      POSTGRES_PASSWORD: saml
+      POSTGRES_DB: saml_sso
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saml"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - saml-network
+    restart: unless-stopped
+
+  # Adminer para gestión de BD (desarrollo)
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      - postgres
+    networks:
+      - saml-network
+    restart: unless-stopped
+
+  # Redis Commander para gestión de Redis (desarrollo)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    ports:
+      - "8081:8081"
+    environment:
+      REDIS_HOSTS: default:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - saml-network
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  postgres-data:
+
+networks:
+  saml-network:
+    driver: bridge
