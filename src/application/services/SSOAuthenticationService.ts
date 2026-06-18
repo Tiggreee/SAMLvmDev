@@ -25,7 +25,8 @@ export class SSOAuthenticationService {
     this.processSAMLResponse = new ProcessSAMLResponse(
       samlConfigRepository,
       sessionRepository,
-      auditLogRepository
+      auditLogRepository,
+      samlAdapter
     );
     this.logoutUser = new LogoutUser(sessionRepository, auditLogRepository);
   }

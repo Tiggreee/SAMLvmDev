@@ -1,13 +1,36 @@
 // Adaptador SAML Core - Implementación con samlify
 
 import samlify from 'samlify';
+import { DOMParser } from '@xmldom/xmldom';
 import { readFileSync } from 'fs';
 import { InvalidSAMLResponseException } from '@domain/saml/exceptions/SAMLExceptions';
+import { ISAMLValidator } from '@domain/saml/ports/ISAMLValidator';
 import { SAMLAttributes, IdPConfig, SAMLValidationResult } from '@shared/types/saml.types';
 
 const { ServiceProvider, IdentityProvider, Constants } = samlify;
 
-export class SAMLAdapter {
+// samlify exige un validador de esquema configurado: sin él, parseLoginResponse
+// rechaza toda respuesta SAML. Validamos la buena formación del XML con un parser
+// seguro; la protección XXE y la verificación criptográfica de la firma las realiza
+// samlify. En despliegues regulados puede sustituirse por un validador XSD estricto.
+samlify.setSchemaValidator({
+  validate: (xml: string): Promise<string> => {
+    try {
+      const doc = new DOMParser().parseFromString(xml, 'text/xml');
+      const root = doc && doc.documentElement;
+      if (!root || root.getElementsByTagName('parsererror').length > 0) {
+        return Promise.reject(new Error('Malformed SAML XML'));
+      }
+      return Promise.resolve('SUCCESS_VALIDATE_XML');
+    } catch (error) {
+      return Promise.reject(
+        error instanceof Error ? error : new Error('Invalid SAML XML')
+      );
+    }
+  },
+});
+
+export class SAMLAdapter implements ISAMLValidator {
   private sp: any;
   private idps: Map<string, any> = new Map();
   private spCert: string = '';
@@ -35,11 +58,16 @@ export class SAMLAdapter {
   }
 
   private initializeServiceProvider(): void {
+    // El cifrado de assertions es opcional (la confidencialidad ya la aporta TLS).
+    // La firma de assertions es obligatoria. El cifrado se habilita explícitamente
+    // y solo entonces se publica el certificado de cifrado en el metadata.
+    const encryptAssertions = process.env.SAML_ENCRYPT_ASSERTIONS === 'true';
+
     this.sp = ServiceProvider({
       metadata: this.generateSPMetadata(),
       privateKey: this.spKey,
-      isAssertionEncrypted: true,
-      encPrivateKey: this.spKey,
+      isAssertionEncrypted: encryptAssertions,
+      ...(encryptAssertions ? { encPrivateKey: this.spKey } : {}),
       wantAssertionsSigned: true,
       requestSignatureAlgorithm: Constants.algorithms.signature.RSA_SHA256,
     });
@@ -117,17 +145,27 @@ export class SAMLAdapter {
         );
       }
 
-      // Validar timestamps con clock skew
+      // Validar timestamps con clock skew.
+      // samlify expone las condiciones como extract.conditions.{notBefore,notOnOrAfter}
+      // en formato ISO (string), no como objetos Date.
       const clockSkew = parseInt(process.env.CLOCK_SKEW_TOLERANCE || '60', 10);
       const now = Date.now();
-      const notBefore = extract.notBefore ? extract.notBefore.getTime() : 0;
-      const notOnOrAfter = extract.notOnOrAfter ? extract.notOnOrAfter.getTime() : 0;
+      const conditions = extract.conditions || {};
+      const notBeforeRaw = conditions.notBefore;
+      const notOnOrAfterRaw = conditions.notOnOrAfter;
+      const notBefore = notBeforeRaw ? new Date(notBeforeRaw).getTime() : 0;
+      const notOnOrAfter = notOnOrAfterRaw
+        ? new Date(notOnOrAfterRaw).getTime()
+        : Number.MAX_SAFE_INTEGER;
 
-      if (now < notBefore - clockSkew * 1000) {
+      if (notBefore && now < notBefore - clockSkew * 1000) {
         validationErrors.push('Assertion is not yet valid');
       }
 
-      if (now > notOnOrAfter + clockSkew * 1000) {
+      if (
+        notOnOrAfter !== Number.MAX_SAFE_INTEGER &&
+        now > notOnOrAfter + clockSkew * 1000
+      ) {
         validationErrors.push('Assertion has expired');
       }
 
@@ -163,17 +201,39 @@ export class SAMLAdapter {
     return this.sp.getMetadata();
   }
 
+  // Implementación del puerto de dominio ISAMLValidator.
+  validateResponse(
+    encodedSAMLResponse: string,
+    relayState: string,
+    idpName: string
+  ): Promise<SAMLValidationResult> {
+    return this.validateSAMLResponse(encodedSAMLResponse, relayState, idpName);
+  }
+
   private generateSPMetadata(): string {
+    const cert = this.extractCertificateContent();
+    const encryptAssertions = process.env.SAML_ENCRYPT_ASSERTIONS === 'true';
+    const encryptionKeyDescriptor = encryptAssertions
+      ? `<KeyDescriptor use="encryption">
+            <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
+              <X509Data>
+                <X509Certificate>${cert}</X509Certificate>
+              </X509Data>
+            </KeyInfo>
+          </KeyDescriptor>`
+      : '';
+
     return `
       <EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="${this.spEntityId}">
         <SPSSODescriptor AuthnRequestsSigned="true" WantAssertionsSigned="true" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
           <KeyDescriptor use="signing">
             <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
               <X509Data>
-                <X509Certificate>${this.extractCertificateContent()}</X509Certificate>
+                <X509Certificate>${cert}</X509Certificate>
               </X509Data>
             </KeyInfo>
           </KeyDescriptor>
+          ${encryptionKeyDescriptor}
           <SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="${this.sloUrl || 'https://localhost:3000/auth/saml/logout'}"/>
           <NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</NameIDFormat>
           <AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="${this.acsUrl}" index="0" isDefault="true"/>

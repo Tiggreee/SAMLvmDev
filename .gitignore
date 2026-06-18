@@ -19,6 +19,9 @@ certificates/*.pem
 certificates/*.p12
 certificates/*.pfx
 
+# Test fixtures temporales
+tests/.tmp/
+
 # Database
 *.db
 *.sqlite
