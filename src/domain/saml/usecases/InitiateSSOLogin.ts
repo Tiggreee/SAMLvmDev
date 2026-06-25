@@ -3,8 +3,16 @@
 import { IdPConfigurationException } from '../exceptions/SAMLExceptions';
 import { ISAMLConfigRepository } from '../repositories/SAMLRepositories';
 
+type SAMLRequestBuilder = (idpName: string) => {
+  samlRequest: string;
+  relayState: string;
+};
+
 export class InitiateSSOLogin {
-  constructor(private samlConfigRepository: ISAMLConfigRepository) {}
+  constructor(
+    private samlConfigRepository: ISAMLConfigRepository,
+    private buildSAMLRequest: SAMLRequestBuilder
+  ) {}
 
   async execute(idpName: string): Promise<{
     samlRequest: string;
@@ -22,24 +30,15 @@ export class InitiateSSOLogin {
       throw new IdPConfigurationException(`IdP is disabled: ${idpName}`);
     }
 
-    // En la implementación real, esto generará el SAML Request
-    // Por ahora, retornamos la estructura
-    const relayState = this.generateRelayState();
-    const samlRequest = await this.generateSAMLRequest();
+    const { relayState, samlRequest } = this.buildSAMLRequest(idpName);
+    const redirectUrl = /^https?:\/\//i.test(samlRequest)
+      ? samlRequest
+      : `${idpConfig.singleSignOnServiceUrl}?SAMLRequest=${encodeURIComponent(samlRequest)}&RelayState=${encodeURIComponent(relayState)}`;
 
     return {
       samlRequest,
       relayState,
-      redirectUrl: `${idpConfig.singleSignOnServiceUrl}?SAMLRequest=${encodeURIComponent(samlRequest)}&RelayState=${relayState}`,
+      redirectUrl,
     };
-  }
-
-  private generateRelayState(): string {
-    return Buffer.from(JSON.stringify({ timestamp: Date.now() })).toString('base64');
-  }
-
-  private async generateSAMLRequest(): Promise<string> {
-    // Implementación en el adaptador SAML
-    return 'base64-encoded-saml-request';
   }
 }

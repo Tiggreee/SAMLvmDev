@@ -3,6 +3,7 @@
 import samlify from 'samlify';
 import { DOMParser } from '@xmldom/xmldom';
 import { readFileSync } from 'fs';
+import { deflateRawSync, inflateRawSync } from 'zlib';
 import { InvalidSAMLResponseException } from '@domain/saml/exceptions/SAMLExceptions';
 import { ISAMLValidator } from '@domain/saml/ports/ISAMLValidator';
 import { SAMLAttributes, IdPConfig, SAMLValidationResult } from '@shared/types/saml.types';
@@ -62,10 +63,14 @@ export class SAMLAdapter implements ISAMLValidator {
     // La firma de assertions es obligatoria. El cifrado se habilita explícitamente
     // y solo entonces se publica el certificado de cifrado en el metadata.
     const encryptAssertions = process.env.SAML_ENCRYPT_ASSERTIONS === 'true';
+    // Muchos IdP (como Okta por defecto) no esperan AuthnRequests firmadas.
+    // Se puede activar explícitamente por entorno cuando el tenant lo requiera.
+    const signAuthnRequests = process.env.SAML_SIGN_AUTHN_REQUESTS === 'true';
 
     this.sp = ServiceProvider({
       metadata: this.generateSPMetadata(),
       privateKey: this.spKey,
+      authnRequestsSigned: signAuthnRequests,
       isAssertionEncrypted: encryptAssertions,
       ...(encryptAssertions ? { encPrivateKey: this.spKey } : {}),
       wantAssertionsSigned: true,
@@ -210,9 +215,35 @@ export class SAMLAdapter implements ISAMLValidator {
     const { id, context } = this.sp.createLoginRequest(idpData.idp, 'redirect');
     
     return {
-      samlRequest: context,
+      samlRequest: this.enableNameIdAllowCreate(context),
       relayState: id,
     };
+  }
+
+  private enableNameIdAllowCreate(context: string): string {
+    if (!/^https?:\/\//i.test(context)) {
+      return context;
+    }
+
+    try {
+      const redirectUrl = new URL(context);
+      const samlRequest = redirectUrl.searchParams.get('SAMLRequest');
+      if (!samlRequest) {
+        return context;
+      }
+
+      const xml = inflateRawSync(Buffer.from(samlRequest, 'base64')).toString('utf-8');
+      const updatedXml = xml.replace('AllowCreate="false"', 'AllowCreate="true"');
+      if (updatedXml === xml) {
+        return context;
+      }
+
+      const updatedRequest = deflateRawSync(Buffer.from(updatedXml, 'utf-8')).toString('base64');
+      redirectUrl.searchParams.set('SAMLRequest', updatedRequest);
+      return redirectUrl.toString();
+    } catch {
+      return context;
+    }
   }
 
   async validateSAMLResponse(
@@ -320,6 +351,7 @@ export class SAMLAdapter implements ISAMLValidator {
   private generateSPMetadata(): string {
     const cert = this.extractCertificateContent();
     const encryptAssertions = process.env.SAML_ENCRYPT_ASSERTIONS === 'true';
+    const signAuthnRequests = process.env.SAML_SIGN_AUTHN_REQUESTS === 'true';
     const encryptionKeyDescriptor = encryptAssertions
       ? `<KeyDescriptor use="encryption">
             <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
@@ -332,7 +364,7 @@ export class SAMLAdapter implements ISAMLValidator {
 
     return `
       <EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="${this.spEntityId}">
-        <SPSSODescriptor AuthnRequestsSigned="true" WantAssertionsSigned="true" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+        <SPSSODescriptor AuthnRequestsSigned="${signAuthnRequests ? 'true' : 'false'}" WantAssertionsSigned="true" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
           <KeyDescriptor use="signing">
             <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
               <X509Data>

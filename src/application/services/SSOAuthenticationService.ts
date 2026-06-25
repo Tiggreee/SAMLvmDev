@@ -21,7 +21,10 @@ export class SSOAuthenticationService {
     sessionRepository: ISessionRepository,
     auditLogRepository: IAuditLogRepository
   ) {
-    this.initiateSSOLogin = new InitiateSSOLogin(samlConfigRepository);
+    this.initiateSSOLogin = new InitiateSSOLogin(
+      samlConfigRepository,
+      (idpName: string) => this.samlAdapter.generateSAMLRequest(idpName)
+    );
     this.processSAMLResponse = new ProcessSAMLResponse(
       samlConfigRepository,
       sessionRepository,

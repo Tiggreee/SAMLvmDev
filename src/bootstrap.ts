@@ -135,6 +135,16 @@ export async function createFastifyServer(): Promise<FastifyInstance> {
     return { status: 'ok', timestamp: new Date().toISOString() };
   });
 
+  // Landing mínima para flujos SSO exitosos cuando no llega RelayState.
+  fastify.get('/dashboard', async (request, _reply) => {
+    return {
+      authenticated: Boolean(request.session?.authenticated),
+      email: request.session?.email || null,
+      idp: request.session?.idp || null,
+      status: 'ok',
+    };
+  });
+
   // Ready Hook
   fastify.addHook('onReady', async () => {
     fastify.log.info('Server is ready');
