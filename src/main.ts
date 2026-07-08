@@ -15,6 +15,11 @@ import { PostgresAuditLogRepository } from '@infrastructure/persistence/reposito
 import { PostgresSAMLConfigRepository } from '@infrastructure/persistence/repositories/PostgresSAMLConfigRepository';
 import { connectRedis, buildRedisUrl } from '@infrastructure/persistence/redis/RedisClient';
 import { RedisSessionRepository } from '@infrastructure/persistence/repositories/RedisSessionRepository';
+import {
+  InMemorySAMLConfigRepository,
+  InMemorySessionRepository,
+  InMemoryAuditLogRepository,
+} from '@infrastructure/persistence/memory/InMemoryRepositories';
 import type {
   IAuditLogRepository,
   ISessionRepository,
@@ -49,92 +54,6 @@ export interface BuildAppOptions {
   additionalIdPs?: IdPConfig[];
 }
 
-// Mock repositories (en producción, usarías BD real)
-class MockSAMLConfigRepository {
-  private configs = new Map();
-
-  async getByIdP(idpName: string) {
-    return this.configs.get(idpName) || null;
-  }
-
-  async getAll() {
-    return Array.from(this.configs.values());
-  }
-
-  async save(config: any) {
-    this.configs.set(config.id, config);
-  }
-
-  async delete(idpName: string) {
-    this.configs.delete(idpName);
-  }
-
-  async updateCertificate(idpName: string, certificatePath: string) {
-    const config = this.configs.get(idpName);
-    if (config) {
-      config.certificatePath = certificatePath;
-    }
-  }
-}
-
-class MockSessionRepository {
-  private sessions = new Map();
-
-  async save(session: any) {
-    this.sessions.set(session.id, session);
-  }
-
-  async findById(sessionId: string) {
-    return this.sessions.get(sessionId) || null;
-  }
-
-  async findByUserId(userId: string) {
-    return Array.from(this.sessions.values()).filter((s: any) => s.userId === userId);
-  }
-
-  async delete(sessionId: string) {
-    this.sessions.delete(sessionId);
-  }
-
-  async deleteByUserId(userId: string) {
-    const sessions = await this.findByUserId(userId);
-    sessions.forEach((s: any) => this.sessions.delete(s.id));
-  }
-
-  async update(session: any) {
-    this.sessions.set(session.id, session);
-  }
-}
-
-class MockAuditLogRepository {
-  private logs: any[] = [];
-
-  async save(log: any) {
-    this.logs.push(log);
-  }
-
-  async findByUserId(userId: string, limit = 50) {
-    return this.logs.filter((l) => l.userId === userId).slice(-limit);
-  }
-
-  async findByEventType(eventType: string, limit = 50) {
-    return this.logs.filter((l) => l.eventType === eventType).slice(-limit);
-  }
-
-  async findByDateRange(startDate: Date, endDate: Date) {
-    return this.logs.filter(
-      (l) => l.timestamp >= startDate && l.timestamp <= endDate
-    );
-  }
-
-  async deleteOlderThan(days: number) {
-    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const before = this.logs.length;
-    this.logs = this.logs.filter((l) => l.timestamp > cutoff);
-    return before - this.logs.length;
-  }
-}
-
 /**
  * Crea los repositorios respaldados por PostgreSQL (auditoría y configuración
  * de IdP) sobre un único pool. Si `DATABASE_URL` está definido se usa
@@ -157,8 +76,8 @@ async function createPersistence(
       'DATABASE_URL no definido: usando persistencia en memoria (solo desarrollo)'
     );
     return {
-      audit: new MockAuditLogRepository(),
-      samlConfig: new MockSAMLConfigRepository(),
+      audit: new InMemoryAuditLogRepository(),
+      samlConfig: new InMemorySAMLConfigRepository(),
     };
   }
 
@@ -182,8 +101,8 @@ async function createPersistence(
       }): usando persistencia en memoria (solo desarrollo)`
     );
     return {
-      audit: new MockAuditLogRepository(),
-      samlConfig: new MockSAMLConfigRepository(),
+      audit: new InMemoryAuditLogRepository(),
+      samlConfig: new InMemorySAMLConfigRepository(),
     };
   }
 }
@@ -212,7 +131,7 @@ async function createSessionRepository(
         error instanceof Error ? error.message : 'error desconocido'
       }): usando sesiones en memoria (solo desarrollo)`
     );
-    return new MockSessionRepository();
+    return new InMemorySessionRepository();
   }
 }
 
