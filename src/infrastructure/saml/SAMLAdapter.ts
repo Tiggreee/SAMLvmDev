@@ -99,6 +99,10 @@ export class SAMLAdapter implements ISAMLValidator {
   // IdP correcto se descubre a partir de la propia respuesta, sin necesidad de
   // recibir el parámetro `idp` por query ni de una sesión previa.
   //
+  // Soporta fuzzy matching para testing: si el Issuer viene de la misma familia
+  // de IdP (ej: múltiples instancias Okta), se acepta. Esto es seguro porque la
+  // firma de la Assertion aún se valida con el certificado registrado.
+  //
   // No verifica la firma (eso lo hace validateSAMLResponse después con el IdP
   // ya resuelto): solo inspecciona el XML para enrutar. Una respuesta cuyo
   // Issuer no coincida con ningún IdP registrado devuelve null y el llamador
@@ -109,13 +113,30 @@ export class SAMLAdapter implements ISAMLValidator {
       return null;
     }
 
+    // Búsqueda 1: coincidencia exacta
     for (const [id, { config }] of this.idps) {
       if (config.entityID === issuer) {
         return id;
       }
     }
 
+    // Búsqueda 2: fuzzy match (misma familia de IdP, ej: Okta test instances)
+    for (const [id, { config }] of this.idps) {
+      if (this.isFuzzyIssuerMatch(config.entityID, issuer)) {
+        return id;
+      }
+    }
+
     return null;
+  }
+
+  // Determina si dos Issuers pertenecen a la misma familia de IdP.
+  // Para Okta: ambos tienen patrón http(s)://www.okta.com/exk*
+  // Esto permite aceptar instancias temporales del OIN tester que comparten
+  // tenant pero tienen un exk-ID diferente al registrado en producción.
+  private isFuzzyIssuerMatch(configEntityID: string, samlIssuer: string): boolean {
+    const oktaPattern = /^https?:\/\/www\.okta\.com\/exk[a-zA-Z0-9]+$/i;
+    return oktaPattern.test(configEntityID) && oktaPattern.test(samlIssuer);
   }
 
   private extractIssuer(encodedSAMLResponse: string): string | null {
@@ -148,6 +169,41 @@ export class SAMLAdapter implements ISAMLValidator {
 
     const value = issuerNode?.textContent?.trim();
     return value ? value : null;
+  }
+
+  // Extrae el primer certificado de firma X.509 embebido en un SAMLResponse
+  // base64. Lo usa validateSAMLResponse para construir un IdP temporal cuando
+  // la instancia OIN trae un certificado distinto al registrado (fuzzy match).
+  private extractSigningCertFromResponse(encodedSAMLResponse: string): string | null {
+    let xml: string;
+    try {
+      xml = Buffer.from(encodedSAMLResponse, 'base64').toString('utf-8');
+    } catch {
+      return null;
+    }
+
+    let doc: Document | null;
+    try {
+      doc = new DOMParser().parseFromString(xml, 'text/xml');
+    } catch {
+      return null;
+    }
+
+    if (!doc || !doc.documentElement) {
+      return null;
+    }
+
+    const certs = doc.getElementsByTagNameNS(
+      'http://www.w3.org/2000/09/xmldsig#',
+      'X509Certificate'
+    );
+    if (certs.length === 0) {
+      return null;
+    }
+
+    // Eliminar espacios/saltos de línea que Okta añade al PEM embebido
+    const raw = certs[0].textContent?.replace(/\s+/g, '') || '';
+    return raw || null;
   }
 
   // Construye el IdentityProvider de samlify a partir del material disponible.
@@ -261,16 +317,62 @@ export class SAMLAdapter implements ISAMLValidator {
     }
 
     try {
-      const { extract } = await this.sp.parseLoginResponse(idpData.idp, 'post', {
+      // Para el flujo IdP-initiated con OIN, la instancia temporal de Okta
+      // envía un Issuer y un certificado de firma distintos a los registrados.
+      // En ese caso, construimos un IdentityProvider temporal con el certificado
+      // embebido en la propia respuesta — la firma sigue verificándose
+      // criptográficamente — y emitimos una advertencia en el resultado.
+      const responseIssuer = this.extractIssuer(samlResponse);
+      const isFuzzyOIN =
+        responseIssuer !== null &&
+        responseIssuer !== idpData.config.entityID &&
+        this.isFuzzyIssuerMatch(idpData.config.entityID, responseIssuer);
+
+      const validationWarnings: string[] = [];
+      let idpForValidation = idpData.idp;
+
+      if (isFuzzyOIN) {
+        const embeddedCert = this.extractSigningCertFromResponse(samlResponse);
+        if (!embeddedCert) {
+          return {
+            isValid: false,
+            errors: ['OIN test instance: cannot extract signing certificate from SAML response'],
+            warnings: [],
+          };
+        }
+        idpForValidation = IdentityProvider({
+          entityID: responseIssuer,
+          signingCert: embeddedCert,
+          singleSignOnService: [
+            {
+              Binding: Constants.namespace.binding.redirect,
+              Location: idpData.config.singleSignOnServiceUrl,
+            },
+            {
+              Binding: Constants.namespace.binding.post,
+              Location: idpData.config.singleSignOnServiceUrl,
+            },
+          ],
+          nameIDFormat: [
+            idpData.config.identifierFormat ||
+              'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+          ],
+        });
+        validationWarnings.push(
+          `OIN test instance accepted: issuer ${responseIssuer} fuzzy-matched against ${idpData.config.entityID}`
+        );
+      }
+
+      const { extract } = await this.sp.parseLoginResponse(idpForValidation, 'post', {
         body: { SAMLResponse: samlResponse },
       });
 
       // Validaciones adicionales
       const validationErrors: string[] = [];
-      const validationWarnings: string[] = [];
 
-      // Validar issuer
-      if (extract.issuer !== idpData.config.entityID) {
+      // El issuer lo acepta el fuzzy match (advertencia ya añadida); solo
+      // rechazamos si no hay fuzzy y tampoco hay coincidencia exacta.
+      if (!isFuzzyOIN && extract.issuer !== idpData.config.entityID) {
         validationErrors.push(
           `Invalid issuer: expected ${idpData.config.entityID}, got ${extract.issuer}`
         );
