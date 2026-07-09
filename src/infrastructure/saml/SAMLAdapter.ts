@@ -121,9 +121,12 @@ export class SAMLAdapter implements ISAMLValidator {
     }
 
     // Búsqueda 2: fuzzy match (misma familia de IdP, ej: Okta test instances)
-    for (const [id, { config }] of this.idps) {
-      if (this.isFuzzyIssuerMatch(config.entityID, issuer)) {
-        return id;
+    // Solo activo cuando OIN_TEST_MODE=true; off por defecto en producción.
+    if (process.env.OIN_TEST_MODE === 'true') {
+      for (const [id, { config }] of this.idps) {
+        if (this.isFuzzyIssuerMatch(config.entityID, issuer)) {
+          return id;
+        }
       }
     }
 
@@ -323,7 +326,10 @@ export class SAMLAdapter implements ISAMLValidator {
       // embebido en la propia respuesta — la firma sigue verificándose
       // criptográficamente — y emitimos una advertencia en el resultado.
       const responseIssuer = this.extractIssuer(samlResponse);
+      // Fuzzy OIN cert matching is a test-only relaxation; disabled in prod.
+      const oinTestMode = process.env.OIN_TEST_MODE === 'true';
       const isFuzzyOIN =
+        oinTestMode &&
         responseIssuer !== null &&
         responseIssuer !== idpData.config.entityID &&
         this.isFuzzyIssuerMatch(idpData.config.entityID, responseIssuer);

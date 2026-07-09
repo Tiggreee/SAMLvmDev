@@ -1,4 +1,4 @@
-FROM node:18-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -14,20 +14,24 @@ COPY src ./src
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
 # Instalar dependencias de producción solo
 COPY package*.json ./
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev && \
     npm cache clean --force
 
 # Copiar código compilado del builder
 COPY --from=builder /app/dist ./dist
 
 # Crear directorio de certificados
-RUN mkdir -p certificates/idp-public-certs
+RUN mkdir -p certificates/idp-public-certs && \
+    chown -R node:node /app
+
+# Drop privileges: never run as root in production
+USER node
 
 # Exponer puerto
 EXPOSE 3000

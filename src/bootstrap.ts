@@ -6,6 +6,7 @@ import fastifyCors from '@fastify/cors';
 import fastifyFormbody from '@fastify/formbody';
 import fastifySession from '@fastify/session';
 import fastifyCookie from '@fastify/cookie';
+import fastifyRateLimit from '@fastify/rate-limit';
 import RedisStore from 'connect-redis';
 import redis from 'redis';
 
@@ -57,6 +58,20 @@ export async function createFastifyServer(): Promise<FastifyInstance> {
   // Sin este parser, el ACS rechazaría el POST real del IdP con 415.
   await fastify.register(fastifyFormbody);
 
+  // Rate-limiting global — protects all endpoints including the public ACS.
+  // ACS is the highest-risk surface (unauthenticated POST, SAML XML parsing).
+  // Limit: 60 req/min globally; individual routes can override downward.
+  await fastify.register(fastifyRateLimit, {
+    global: true,
+    max: 60,
+    timeWindow: '1 minute',
+    errorResponseBuilder: (_request, context) => ({
+      error: 'TooManyRequests',
+      message: `Rate limit exceeded. Retry after ${Math.ceil(context.ttl / 1000)} seconds.`,
+      statusCode: 429,
+    }),
+  });
+
   // Cookies
   await fastify.register(fastifyCookie);
 
@@ -100,7 +115,7 @@ export async function createFastifyServer(): Promise<FastifyInstance> {
     secret: sessionSecret || 'dev-session-secret-change-me-please-32',
     cookie: {
       maxAge: parseInt(process.env.SESSION_TTL || '86400') * 1000,
-      secure: process.env.HTTPS_ONLY === 'true',
+      secure: isProduction || process.env.HTTPS_ONLY === 'true',
       httpOnly: true,
       sameSite: process.env.SAMSITE_COOKIES === 'Strict' ? 'strict' : 'lax',
     },

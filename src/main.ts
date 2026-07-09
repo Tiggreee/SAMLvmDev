@@ -1,6 +1,11 @@
 // Punto de entrada principal
 
 import 'dotenv/config';
+import { validateEnv } from '@infrastructure/config/EnvConfig';
+
+// Fail-fast: abort before accepting connections if any env var is missing/invalid.
+validateEnv();
+
 import { fileURLToPath } from 'url';
 import type { FastifyInstance } from 'fastify';
 import { createFastifyServer, startServer } from './bootstrap';
