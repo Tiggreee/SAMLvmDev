@@ -9,6 +9,7 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyRateLimit from '@fastify/rate-limit';
 import RedisStore from 'connect-redis';
 import redis from 'redis';
+import { registry, httpRequestDuration } from '@infrastructure/observability/Metrics';
 
 export async function createFastifyServer(): Promise<FastifyInstance> {
   const fastify = Fastify({
@@ -152,6 +153,20 @@ export async function createFastifyServer(): Promise<FastifyInstance> {
   // Health Check
   fastify.get('/health', async (_request, _reply) => {
     return { status: 'ok', timestamp: new Date().toISOString() };
+  });
+
+  // Métricas Prometheus. Excluido del rate-limit para no perder scrapes.
+  fastify.get('/metrics', { config: { rateLimit: false } }, async (_request, reply) => {
+    reply.header('Content-Type', registry.contentType);
+    return registry.metrics();
+  });
+
+  // Instrumentación de latencia HTTP por método/ruta/código.
+  fastify.addHook('onResponse', async (request, reply) => {
+    const route = request.routeOptions?.url || request.url;
+    httpRequestDuration
+      .labels(request.method, route, String(reply.statusCode))
+      .observe(reply.elapsedTime / 1000);
   });
 
   // Landing mínima para flujos SSO exitosos cuando no llega RelayState.

@@ -4,6 +4,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { SSOAuthenticationService } from '@application/services/SSOAuthenticationService';
 import { SAMLMetadataService } from '@application/services/SAMLMetadataService';
 import { AuditService } from '@application/services/AuditService';
+import { samlValidationTotal, activeSessions } from '@infrastructure/observability/Metrics';
 
 export class AuthController {
   constructor(
@@ -101,6 +102,9 @@ export class AuthController {
         true
       );
 
+      samlValidationTotal.labels(idp, 'success').inc();
+      activeSessions.inc();
+
       // Redireccionar al dashboard o RelayState
       const redirectUrl = RelayState
         ? Buffer.from(RelayState, 'base64').toString('utf-8')
@@ -119,6 +123,8 @@ export class AuthController {
         false,
         error instanceof Error ? error.message : 'Unknown error'
       );
+
+      samlValidationTotal.labels(idp, 'failure').inc();
 
       return reply.status(400).send({
         error: 'SAML validation failed',
@@ -175,6 +181,8 @@ export class AuthController {
 
       // Destruir sesión
       await request.session.destroy();
+
+      activeSessions.dec();
 
       return reply.status(200).send({
         success: true,
