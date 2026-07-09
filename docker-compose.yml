@@ -1,16 +1,39 @@
 version: '3.8'
 
 services:
+  # Reverse proxy con TLS automático (Let's Encrypt).
+  # Único punto de entrada público: termina HTTPS y reenvía a la app.
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    networks:
+      - saml-network
+    restart: unless-stopped
+
   # Aplicación principal SAML SSO
   app:
     build: .
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       NODE_ENV: production
       PORT: 3000
-      SAML_SP_ENTITY_ID: https://localhost:3000
-      SAML_SP_ACS_URL: https://localhost:3000/auth/saml/acs
+      HOST: 0.0.0.0
+      PROTOCOL: https
+      HTTPS_ONLY: "true"
+      SAML_SP_ENTITY_ID: https://${PUBLIC_DOMAIN:-localhost}
+      SAML_SP_ACS_URL: https://${PUBLIC_DOMAIN:-localhost}/saml/acs
+      SAML_SP_SLO_URL: https://${PUBLIC_DOMAIN:-localhost}/saml/slo
       SAML_SP_CERT_PATH: /app/certificates/sp.crt
       SAML_SP_KEY_PATH: /app/certificates/sp.key
       REDIS_HOST: redis
@@ -33,8 +56,8 @@ services:
   # Redis para sesiones
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes
@@ -54,8 +77,8 @@ services:
       POSTGRES_USER: saml
       POSTGRES_PASSWORD: saml
       POSTGRES_DB: saml_sso
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -68,9 +91,10 @@ services:
       - saml-network
     restart: unless-stopped
 
-  # Adminer para gestión de BD (desarrollo)
+  # Adminer para gestión de BD (solo desarrollo — perfil 'dev-tools')
   adminer:
     image: adminer:latest
+    profiles: ["dev-tools"]
     ports:
       - "8080:8080"
     environment:
@@ -81,9 +105,10 @@ services:
       - saml-network
     restart: unless-stopped
 
-  # Redis Commander para gestión de Redis (desarrollo)
+  # Redis Commander para gestión de Redis (solo desarrollo — perfil 'dev-tools')
   redis-commander:
     image: rediscommander/redis-commander:latest
+    profiles: ["dev-tools"]
     ports:
       - "8081:8081"
     environment:
@@ -97,6 +122,8 @@ services:
 volumes:
   redis-data:
   postgres-data:
+  caddy-data:
+  caddy-config:
 
 networks:
   saml-network:

@@ -1,0 +1,24 @@
+# Caddy reverse proxy — TLS automático (Let's Encrypt) para el gateway SAML.
+#
+# PUBLIC_DOMAIN debe apuntar (registro DNS A/AAAA) a la IP pública del host.
+# Caddy provisiona y renueva el certificado TLS automáticamente en el primer
+# arranque; no requiere gestión manual de certificados.
+#
+# Este dominio estable resuelve el problema de la URL efímera: SAML_SP_ENTITY_ID,
+# ACS y SLO se registran una sola vez en el IdP y no cambian entre reinicios.
+
+{$PUBLIC_DOMAIN} {
+	# Termina TLS y reenvía el tráfico al contenedor de la app.
+	# La app aplica sus propios security headers (Helmet/CSP/HSTS).
+	reverse_proxy app:3000 {
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {host}
+	}
+
+	encode gzip zstd
+
+	log {
+		output stdout
+		format console
+	}
+}

@@ -12,6 +12,10 @@ import redis from 'redis';
 
 export async function createFastifyServer(): Promise<FastifyInstance> {
   const fastify = Fastify({
+    // Behind the Caddy reverse proxy: trust X-Forwarded-* so req.ip and
+    // req.protocol reflect the real client (correct rate-limit keying and
+    // audit logging) instead of the proxy's address.
+    trustProxy: true,
     logger: {
       level: process.env.LOG_LEVEL || 'info',
       transport: {
