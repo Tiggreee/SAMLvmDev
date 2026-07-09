@@ -297,7 +297,81 @@ src/shared/              ← Tipos compartidos
 
 3. Documentar el setup en docs/idp-guides/
 
+## Dominios y subdominios
+
+Arquitectura de subdominios sobre `tigrelabs.xyz`. Separa la superficie de
+producto (el gateway SAML) de las superficies legales y operativas, de modo que
+cada documento de cumplimiento tenga una URL estable y citable.
+
+| Subdominio | Propósito | Destino |
+|------------|-----------|---------|
+| `sso.tigrelabs.xyz` | Gateway SAML (ACS, metadata, login, SLO). Superficie del producto. | Railway (app) |
+| `privacy.tigrelabs.xyz` | Aviso de Privacidad (MX) / Privacy Policy (UE/EEUU). | Sitio estático |
+| `legal.tigrelabs.xyz` | Hub legal: Términos, DPA, Política de Cookies, sub-encargados. | Sitio estático |
+| `trust.tigrelabs.xyz` | Trust Center: postura de seguridad, certificaciones, sub-procesadores. | Sitio estático |
+| `status.tigrelabs.xyz` | Estado del servicio y disponibilidad (transparencia de SLA). | Página de estado |
+| `docs.tigrelabs.xyz` | Documentación de integración. | Sitio estático |
+
+Notas:
+- El gateway (`sso`) es la única superficie que procesa datos personales.
+- Los subdominios legales sirven contenido estático; pueden alojarse aparte del
+  runtime del gateway para reducir su superficie de ataque.
+- El registro DNS del gateway es un `CNAME` al dominio que entrega Railway al
+  añadir el dominio personalizado (ver Despliegue → Railway).
+
+## Cumplimiento y aspectos legales
+
+El gateway actúa como **encargado del tratamiento** (data processor): procesa
+atributos de identidad (correo, nombre, identificadores del IdP) por cuenta de la
+organización cliente, que es la **responsable** (data controller). Esta sección
+es un mapa de referencia; no sustituye asesoría legal.
+
+Regímenes aplicables según la ubicación de los titulares de los datos:
+
+- **México — Ley Federal de Protección de Datos Personales en Posesión de los
+  Particulares** (marco vigente tras la reforma de 2025). Exige **Aviso de
+  Privacidad**, base de licitud/consentimiento y derechos **ARCO** (Acceso,
+  Rectificación, Cancelación, Oposición).
+- **Unión Europea — GDPR**. Exige base de licitud, **Acuerdo de Encargo (DPA)**
+  con el responsable, derechos del titular, lista de sub-encargados, contacto de
+  privacidad y notificación de brechas (72 h).
+- **California — CCPA/CPRA**. Derechos del consumidor y transparencia sobre
+  compartición de datos.
+- **Enterprise readiness** — controles alineados a **SOC 2** e **ISO/IEC 27001**,
+  habitualmente requeridos por compradores corporativos.
+
+Documentos legales mínimos a publicar (en los subdominios anteriores):
+- Aviso de Privacidad / Privacy Policy (`privacy`).
+- Términos del Servicio y Data Processing Agreement (`legal`).
+- Política de Cookies y lista de sub-encargados (`legal` / `trust`).
+
 ## Despliegue
+
+### Railway
+
+Railway hospeda el gateway como contenedor y termina el TLS en su edge (no se
+necesita Caddy en este modo). El repositorio incluye `railway.json`, que indica
+a Railway construir con el `Dockerfile` y usar `/health` como healthcheck.
+
+1. Crear el proyecto en Railway y desplegar desde este repositorio (o imagen
+   Docker). Railway detecta `railway.json` y construye con el `Dockerfile`.
+2. Añadir servicios gestionados **PostgreSQL** y **Redis** al proyecto.
+3. Configurar variables de entorno del servicio de la app:
+   - `NODE_ENV=production`
+   - `SESSION_SECRET` (32+ caracteres)
+   - `DATABASE_URL` → referencia a la Postgres de Railway
+   - `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` → referencias a la Redis de Railway
+   - `SAML_SP_ENTITY_ID=https://sso.tigrelabs.xyz`
+   - `SAML_SP_ACS_URL=https://sso.tigrelabs.xyz/saml/acs`
+   - `SAML_SP_SLO_URL=https://sso.tigrelabs.xyz/saml/slo`
+   - `HTTPS_ONLY=true`
+   - `OIN_TEST_MODE=false`
+   Railway inyecta `PORT` automáticamente; la app lo respeta.
+4. En **Settings → Networking → Custom Domain**, añadir `sso.tigrelabs.xyz`.
+   Railway entrega un destino `CNAME`.
+5. En Namecheap (Advanced DNS) crear el registro:
+   `Type=CNAME  Host=sso  Value=<destino-de-railway>  TTL=Automatic`.
+6. Esperar la propagación y la emisión del certificado TLS por Railway.
 
 ### Local
 ```bash
@@ -305,15 +379,10 @@ npm run dev
 # https://localhost:3000
 ```
 
-### Docker
+### Docker (self-hosted con reverse proxy)
 ```bash
-docker build -t saml-sp .
-
-docker run -p 3000:3000 \
-  -e SAML_SP_ENTITY_ID=https://app.example.com \
-  -e REDIS_HOST=redis-server \
-  -v ./certificates:/app/certificates \
-  saml-sp
+# Requiere PUBLIC_DOMAIN con DNS apuntando al host; Caddy emite el TLS.
+docker compose up -d
 ```
 
 ### Verificaciones para producción
