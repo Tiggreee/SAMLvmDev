@@ -52,7 +52,7 @@ export class SAMLAdapter implements ISAMLValidator {
     try {
       this.spCert = readFileSync(certPath || process.env.SAML_SP_CERT_PATH || 'certificates/sp.crt', 'utf-8');
       this.spKey = readFileSync(keyPath || process.env.SAML_SP_KEY_PATH || 'certificates/sp.key', 'utf-8');
-    } catch (error) {
+    } catch {
       console.warn('Certificates not found, will use self-signed for development');
       // En producción, esto debería fallar. En desarrollo, los generaremos.
     }
@@ -504,7 +504,7 @@ export class SAMLAdapter implements ISAMLValidator {
 
     try {
       return readFileSync(idpConfig.certificatePath, 'utf-8');
-    } catch (error) {
+    } catch {
       throw new InvalidSAMLResponseException(
         `Failed to load IdP metadata from ${idpConfig.certificatePath}`
       );
