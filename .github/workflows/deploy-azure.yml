@@ -1,0 +1,41 @@
+name: Deploy to Azure Container Apps
+
+# Despliegue manual a Azure Container Apps. Se dispara a mano (workflow_dispatch)
+# para evitar despliegues automáticos en cada push. Construye la imagen desde el
+# Dockerfile y la publica en el Container App indicado.
+#
+# Requisitos (configurar una vez en Settings → Secrets and variables → Actions):
+#   Secret  AZURE_CREDENTIALS  → JSON del service principal (az ad sp create-for-rbac ... --sdk-auth)
+#   Variable AZURE_RESOURCE_GROUP  → grupo de recursos (p. ej. rg-samlsso)
+#   Variable AZURE_CONTAINERAPP    → nombre del Container App (p. ej. samlsso)
+#   Variable AZURE_ACR_NAME        → nombre del Azure Container Registry (p. ej. tigrelabsacr)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Build and deploy to Container Apps
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          appSourcePath: ${{ github.workspace }}
+          dockerfilePath: Dockerfile
+          acrName: ${{ vars.AZURE_ACR_NAME }}
+          containerAppName: ${{ vars.AZURE_CONTAINERAPP }}
+          resourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
+          targetPort: 3000
+          ingress: external

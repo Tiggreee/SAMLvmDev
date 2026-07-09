@@ -10,6 +10,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import RedisStore from 'connect-redis';
 import redis from 'redis';
 import { registry, httpRequestDuration } from '@infrastructure/observability/Metrics';
+import { buildRedisUrl } from '@infrastructure/persistence/redis/RedisClient';
 
 export async function createFastifyServer(): Promise<FastifyInstance> {
   const fastify = Fastify({
@@ -81,9 +82,7 @@ export async function createFastifyServer(): Promise<FastifyInstance> {
   await fastify.register(fastifyCookie);
 
   // Session Management
-  const redisUrl = `redis://${
-    process.env.REDIS_PASSWORD ? `:${process.env.REDIS_PASSWORD}@` : ''
-  }${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || '6379'}/${process.env.REDIS_DB || '0'}`;
+  const redisUrl = buildRedisUrl();
 
   const isProduction = process.env.NODE_ENV === 'production';
   let sessionStore: InstanceType<typeof RedisStore> | undefined;

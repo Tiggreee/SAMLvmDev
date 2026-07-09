@@ -16,11 +16,14 @@ export interface PostgresPool extends PgQueryable {
 
 /**
  * Crea un pool de PostgreSQL a partir de `DATABASE_URL`. El tamaño máximo se
- * toma de `DATABASE_POOL_SIZE` (por defecto 10).
+ * toma de `DATABASE_POOL_SIZE` (por defecto 10). `DATABASE_SSL=true` habilita
+ * TLS para proveedores gestionados (Neon, Supabase, Railway) que lo exigen.
  */
 export function createPostgresPool(connectionString: string): PostgresPool {
   const max = parseInt(process.env.DATABASE_POOL_SIZE || '10', 10);
-  const pool = new pg.Pool({ connectionString, max });
+  const ssl =
+    process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined;
+  const pool = new pg.Pool({ connectionString, max, ...(ssl ? { ssl } : {}) });
   return pool as unknown as PostgresPool;
 }
 

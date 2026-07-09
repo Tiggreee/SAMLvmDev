@@ -25,12 +25,16 @@ const envSchema = z.object({
 
   // Database
   DATABASE_URL: z.string().url().optional(),
+  DATABASE_POOL_SIZE: z.coerce.number().int().positive().max(100).default(10),
+  DATABASE_SSL: z.enum(['true', 'false']).default('false'),
 
   // Redis
+  REDIS_URL: z.string().optional(),
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
   REDIS_DB: z.coerce.number().int().min(0).max(15).default(0),
   REDIS_PASSWORD: z.string().optional(),
+  REDIS_TLS: z.enum(['true', 'false']).default('false'),
 
   // SAML SP
   SAML_SP_ENTITY_ID: z.string().url().default('https://localhost:3000'),
