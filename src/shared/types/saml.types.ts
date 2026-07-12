@@ -130,6 +130,7 @@ export interface Tenant {
   apiKeyHash: string;
   enabled: boolean;
   createdAt: Date;
+  stripeCustomerId?: string;
 }
 
 export interface SAMLValidationResult {

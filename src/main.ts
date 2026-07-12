@@ -16,6 +16,7 @@ import { SSOAuthenticationService } from '@application/services/SSOAuthenticatio
 import { SAMLMetadataService } from '@application/services/SAMLMetadataService';
 import { AuditService } from '@application/services/AuditService';
 import { TenantService } from '@application/services/TenantService';
+import { BillingService } from '@application/services/BillingService';
 import { createPostgresPool } from '@infrastructure/persistence/database/PostgresPool';
 import { PostgresAuditLogRepository } from '@infrastructure/persistence/repositories/PostgresAuditLogRepository';
 import { PostgresSAMLConfigRepository } from '@infrastructure/persistence/repositories/PostgresSAMLConfigRepository';
@@ -258,11 +259,17 @@ export async function buildApp(
     );
 
     // Servicio y controlador de administración (multi-tenant)
+    const billingService = new BillingService({
+      secretKey: process.env.STRIPE_SECRET_KEY,
+      priceId: process.env.STRIPE_PRICE_ID,
+      meterEventName: process.env.STRIPE_METER_EVENT_NAME,
+    });
     const tenantService = new TenantService(
       tenantRepo,
       samlConfigRepo,
       (config) => registerIdPSafe(config),
-      auditLogRepo
+      auditLogRepo,
+      billingService
     );
     const adminController = new AdminController(tenantService);
 
@@ -270,7 +277,8 @@ export async function buildApp(
     const tenantAuthController = new TenantAuthController(
       tenantService,
       ssoAuthService,
-      auditService
+      auditService,
+      billingService
     );
 
     // Registrar rutas

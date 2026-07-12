@@ -167,4 +167,48 @@ describe('Admin panel (multi-tenant)', () => {
     expect(body.authentications).toBe(0);
     expect(body.periodDays).toBe(30);
   });
+
+  it('login de admin abre sesión y permite operar sin x-admin-key', async () => {
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { key: 'wrong' },
+    });
+    expect(bad.statusCode).toBe(401);
+
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { key: ADMIN_KEY },
+    });
+    expect(ok.statusCode).toBe(200);
+    const cookie = ok.cookies.find((c) => c.name === 'sessionId');
+    expect(cookie).toBeTruthy();
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/admin/tenants',
+      cookies: { sessionId: cookie!.value },
+    });
+    expect(list.statusCode).toBe(200);
+  });
+
+  it('billing responde 400 cuando Stripe no está configurado', async () => {
+    const t = await app
+      .inject({
+        method: 'POST',
+        url: '/admin/tenants',
+        headers: { 'x-admin-key': ADMIN_KEY },
+        payload: { name: 'Massive Dynamic' },
+      })
+      .then((r) => r.json());
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/admin/tenants/${t.id}/billing`,
+      headers: { 'x-admin-key': ADMIN_KEY },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/STRIPE_SECRET_KEY/);
+  });
 });

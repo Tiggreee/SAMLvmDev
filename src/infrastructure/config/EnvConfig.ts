@@ -54,6 +54,11 @@ const envSchema = z.object({
   // Admin panel master key (habilita /admin/* cuando está presente)
   ADMIN_API_KEY: z.string().min(24).optional(),
 
+  // Stripe metered billing (opcional; sin secret key la facturación queda no-op)
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_PRICE_ID: z.string().optional(),
+  STRIPE_METER_EVENT_NAME: z.string().default('saml_authentication'),
+
   // CORS
   CORS_ORIGIN: z.string().optional(),
 

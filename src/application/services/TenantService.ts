@@ -11,6 +11,7 @@ import {
   IAuditLogRepository,
 } from '@domain/saml/repositories/SAMLRepositories';
 import { Tenant, IdPConfig } from '@shared/types/saml.types';
+import { BillingService } from './BillingService';
 
 export interface TenantView {
   id: string;
@@ -18,6 +19,7 @@ export interface TenantView {
   slug: string;
   enabled: boolean;
   createdAt: Date;
+  stripeCustomerId?: string;
 }
 
 export interface CreatedTenant extends TenantView {
@@ -53,7 +55,8 @@ export class TenantService {
     // verificarse. Se inyecta desde el composition root para no acoplar la
     // aplicación al adaptador de infraestructura.
     private registerIdPInValidator?: (config: IdPConfig) => void,
-    private auditLogRepository?: IAuditLogRepository
+    private auditLogRepository?: IAuditLogRepository,
+    private billingService?: BillingService
   ) {}
 
   async createTenant(name: string): Promise<CreatedTenant> {
@@ -111,6 +114,28 @@ export class TenantService {
     }
     await this.tenantRepository.delete(id);
     return true;
+  }
+
+  // Da de alta la facturación de un tenant: crea el customer en Stripe y, si hay
+  // precio configurado, la suscripción medida. No-op si billing está deshabilitado.
+  async attachBilling(id: string): Promise<TenantView | null> {
+    const tenant = await this.tenantRepository.findById(id);
+    if (!tenant) {
+      return null;
+    }
+    if (!this.billingService?.enabled) {
+      throw new Error('Billing is not enabled (STRIPE_SECRET_KEY missing)');
+    }
+    if (tenant.stripeCustomerId) {
+      return this.toView(tenant);
+    }
+    const customerId = await this.billingService.createCustomer(tenant.name, tenant.id);
+    if (customerId) {
+      await this.billingService.createSubscription(customerId);
+    }
+    const updated: Tenant = { ...tenant, stripeCustomerId: customerId ?? undefined };
+    await this.tenantRepository.save(updated);
+    return this.toView(updated);
   }
 
   // Autentica una clave de API de tenant. Devuelve el tenant si la clave es
@@ -187,6 +212,7 @@ export class TenantService {
       slug: tenant.slug,
       enabled: tenant.enabled,
       createdAt: tenant.createdAt,
+      stripeCustomerId: tenant.stripeCustomerId,
     };
   }
 }

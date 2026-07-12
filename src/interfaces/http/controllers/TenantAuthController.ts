@@ -7,13 +7,15 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { TenantService } from '@application/services/TenantService';
 import { SSOAuthenticationService } from '@application/services/SSOAuthenticationService';
 import { AuditService } from '@application/services/AuditService';
+import { BillingService } from '@application/services/BillingService';
 import { tenantAuthentications } from '@infrastructure/observability/Metrics';
 
 export class TenantAuthController {
   constructor(
     private tenantService: TenantService,
     private ssoAuthService: SSOAuthenticationService,
-    private auditService: AuditService
+    private auditService: AuditService,
+    private billingService?: BillingService
   ) {}
 
   async initiateLogin(request: FastifyRequest, reply: FastifyReply) {
@@ -94,6 +96,13 @@ export class TenantAuthController {
 
       await this.auditService.logLoginAttempt(result.email, idp, ipAddress, true);
       tenantAuthentications.labels(tenant.slug, 'success').inc();
+
+      // Reporte de consumo a Stripe (fire-and-forget): no interrumpe el login.
+      if (this.billingService?.enabled && tenant.stripeCustomerId) {
+        this.billingService
+          .reportUsage(tenant.stripeCustomerId, 1)
+          .catch(() => undefined);
+      }
 
       const redirectUrl = RelayState
         ? Buffer.from(RelayState, 'base64').toString('utf-8')

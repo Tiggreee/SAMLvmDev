@@ -9,5 +9,6 @@ declare module '@fastify/session' {
     samlSessionId?: string;
     authenticated?: boolean;
     tenantId?: string;
+    isAdmin?: boolean;
   }
 }

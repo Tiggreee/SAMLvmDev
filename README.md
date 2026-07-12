@@ -366,12 +366,33 @@ a Railway construir con el `Dockerfile` y usar `/health` como healthcheck.
    - `SAML_SP_SLO_URL=https://sso.tigrelabs.xyz/saml/slo`
    - `HTTPS_ONLY=true`
    - `OIN_TEST_MODE=false`
+   - `ADMIN_API_KEY` (24+ caracteres; habilita la consola `/admin/*`)
+   - `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID` (opcional; facturación por consumo)
    Railway inyecta `PORT` automáticamente; la app lo respeta.
 4. En **Settings → Networking → Custom Domain**, añadir `sso.tigrelabs.xyz`.
    Railway entrega un destino `CNAME`.
 5. En Namecheap (Advanced DNS) crear el registro:
    `Type=CNAME  Host=sso  Value=<destino-de-railway>  TTL=Automatic`.
 6. Esperar la propagación y la emisión del certificado TLS por Railway.
+
+### Consola de administración y facturación
+
+El gateway expone un plano de administración multi-tenant bajo `/admin/*`,
+protegido por `ADMIN_API_KEY` (o sesión de admin vía `POST /admin/login`):
+
+- `POST /admin/tenants` · `GET /admin/tenants` · `GET /admin/tenants/:id`
+- `PATCH /admin/tenants/:id` (habilitar/deshabilitar) · `DELETE /admin/tenants/:id`
+- `POST /admin/tenants/:id/idps` · `GET /admin/tenants/:id/idps`
+- `GET /admin/tenants/:id/usage` (consumo facturable por periodo)
+- `POST /admin/tenants/:id/billing` (alta de customer/subscription en Stripe)
+
+Cada tenant obtiene un espacio SAML aislado: `GET /saml/t/:slug/login` y
+`POST /saml/t/:slug/acs`. La consola web (`app.html`) consume esta API; se
+publica como sitio estático (por ejemplo `admin.tigrelabs.xyz`). Añade el origen
+de la consola a `CORS_ORIGIN`.
+
+La facturación es opcional: sin `STRIPE_SECRET_KEY` el módulo es no-op. Con una
+clave de test (`sk_test_...`) funciona en modo prueba sin cobros reales.
 
 ### Local
 ```bash

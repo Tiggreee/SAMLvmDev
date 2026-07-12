@@ -20,6 +20,26 @@ type RegisterIdPBody = Omit<IdPConfig, 'tenantId'>;
 export class AdminController {
   constructor(private tenantService: TenantService) {}
 
+  // Login de administrador para la consola: valida la master key y abre sesión
+  // (cookie), evitando que el navegador reenvíe la clave en cada petición.
+  async login(request: FastifyRequest, reply: FastifyReply) {
+    const { key } = (request.body as { key?: string }) || {};
+    const configured = process.env.ADMIN_API_KEY;
+    if (!configured) {
+      return reply.status(503).send({ error: 'Admin disabled', message: 'ADMIN_API_KEY is not configured' });
+    }
+    if (!key || key !== configured) {
+      return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid admin key' });
+    }
+    request.session.isAdmin = true;
+    return reply.status(200).send({ ok: true });
+  }
+
+  async logout(request: FastifyRequest, reply: FastifyReply) {
+    await request.session.destroy();
+    return reply.status(204).send();
+  }
+
   async createTenant(request: FastifyRequest, reply: FastifyReply) {
     const { name } = (request.body as CreateTenantBody) || {};
     try {
@@ -105,5 +125,21 @@ export class AdminController {
       return reply.status(404).send({ error: 'Not found', message: `Tenant ${id} not found` });
     }
     return reply.status(200).send(usage);
+  }
+
+  async attachBilling(request: FastifyRequest, reply: FastifyReply) {
+    const { id } = request.params as { id: string };
+    try {
+      const tenant = await this.tenantService.attachBilling(id);
+      if (!tenant) {
+        return reply.status(404).send({ error: 'Not found', message: `Tenant ${id} not found` });
+      }
+      return reply.status(200).send(tenant);
+    } catch (error) {
+      return reply.status(400).send({
+        error: 'Billing setup failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 }

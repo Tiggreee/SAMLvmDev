@@ -9,12 +9,13 @@ import { PgQueryable } from '../database/PostgresPool';
 
 export const TENANTS_SCHEMA = `
   CREATE TABLE IF NOT EXISTS tenants (
-    id           TEXT        PRIMARY KEY,
-    name         TEXT        NOT NULL,
-    slug         TEXT        NOT NULL UNIQUE,
-    api_key_hash TEXT        NOT NULL,
-    enabled      BOOLEAN     NOT NULL DEFAULT TRUE,
-    created_at   TIMESTAMPTZ NOT NULL
+    id                 TEXT        PRIMARY KEY,
+    name               TEXT        NOT NULL,
+    slug               TEXT        NOT NULL UNIQUE,
+    api_key_hash       TEXT        NOT NULL,
+    enabled            BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at         TIMESTAMPTZ NOT NULL,
+    stripe_customer_id TEXT
   );
 `;
 
@@ -25,6 +26,7 @@ interface TenantRow {
   api_key_hash: string;
   enabled: boolean;
   created_at: Date | string;
+  stripe_customer_id: string | null;
 }
 
 export class PostgresTenantRepository implements ITenantRepository {
@@ -36,13 +38,14 @@ export class PostgresTenantRepository implements ITenantRepository {
 
   async save(tenant: Tenant): Promise<void> {
     await this.db.query(
-      `INSERT INTO tenants (id, name, slug, api_key_hash, enabled, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO tenants (id, name, slug, api_key_hash, enabled, created_at, stripe_customer_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          slug = EXCLUDED.slug,
          api_key_hash = EXCLUDED.api_key_hash,
-         enabled = EXCLUDED.enabled`,
+         enabled = EXCLUDED.enabled,
+         stripe_customer_id = EXCLUDED.stripe_customer_id`,
       [
         tenant.id,
         tenant.name,
@@ -50,6 +53,7 @@ export class PostgresTenantRepository implements ITenantRepository {
         tenant.apiKeyHash,
         tenant.enabled,
         tenant.createdAt,
+        tenant.stripeCustomerId ?? null,
       ]
     );
   }
@@ -92,6 +96,7 @@ export class PostgresTenantRepository implements ITenantRepository {
       apiKeyHash: row.api_key_hash,
       enabled: row.enabled,
       createdAt: new Date(row.created_at),
+      stripeCustomerId: row.stripe_customer_id ?? undefined,
     };
   }
 }

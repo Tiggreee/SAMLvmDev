@@ -22,8 +22,21 @@ export async function adminRoutes(
   fastify: FastifyInstance,
   adminController: AdminController
 ) {
-  // Guard de administración: valida ADMIN_API_KEY en cada petición /admin/*.
+  // Login/logout de la consola. El login es público (valida la key en el body);
+  // el resto de rutas exige sesión de admin o la cabecera x-admin-key.
+  fastify.post('/login', (req, reply) => adminController.login(req, reply));
+  fastify.post('/logout', (req, reply) => adminController.logout(req, reply));
+
+  // Guard de administración: acepta sesión de admin (cookie) o ADMIN_API_KEY
+  // en la cabecera x-admin-key, comparada de forma resistente a temporización.
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+    // Las rutas de login/logout no pasan por el guard.
+    if (request.url.endsWith('/login') || request.url.endsWith('/logout')) {
+      return;
+    }
+    if (request.session?.isAdmin) {
+      return;
+    }
     const configured = process.env.ADMIN_API_KEY;
     if (!configured) {
       return reply.status(503).send({
@@ -35,7 +48,7 @@ export async function adminRoutes(
     if (typeof provided !== 'string' || !safeEqual(provided, configured)) {
       return reply.status(401).send({
         error: 'Unauthorized',
-        message: 'Valid x-admin-key header is required',
+        message: 'Valid admin session or x-admin-key header is required',
       });
     }
   });
@@ -49,4 +62,5 @@ export async function adminRoutes(
   fastify.post('/tenants/:id/idps', (req, reply) => adminController.registerIdP(req, reply));
   fastify.get('/tenants/:id/idps', (req, reply) => adminController.listIdPs(req, reply));
   fastify.get('/tenants/:id/usage', (req, reply) => adminController.getUsage(req, reply));
+  fastify.post('/tenants/:id/billing', (req, reply) => adminController.attachBilling(req, reply));
 }
