@@ -21,7 +21,7 @@ export interface SAMLAttributes {
   surname?: string;
   groups?: string[];
   roles?: string[];
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface SAMLResponse {
@@ -133,7 +133,7 @@ export interface AuditLog {
   idpName?: string;
   ipAddress?: string;
   userAgent?: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
   status: 'SUCCESS' | 'FAILURE';
   errorMessage?: string;
 }

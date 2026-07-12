@@ -32,8 +32,12 @@ samlify.setSchemaValidator({
 });
 
 export class SAMLAdapter implements ISAMLValidator {
+  // samlify no publica tipos para sus instancias de SP/IdP; se tratan como
+  // opacas y solo se invocan a través de su API en la frontera de este adaptador.
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   private sp: any;
   private idps: Map<string, any> = new Map();
+  /* eslint-enable @typescript-eslint/no-explicit-any */
   private spCert: string = '';
   private spKey: string = '';
 
@@ -215,6 +219,8 @@ export class SAMLAdapter implements ISAMLValidator {
   // X.509 acompañado de su entityID y su URL de SSO. Soportamos ambos:
   //  - metadata XML: se pasa tal cual a samlify.
   //  - certificado de firma: se reconstruye el IdP desde sus componentes.
+  // El retorno es una instancia opaca de samlify (sin tipos publicados).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private buildIdentityProvider(idpConfig: IdPConfig): any {
     const material = this.loadIdPMetadata(idpConfig).trim();
 
@@ -511,6 +517,9 @@ export class SAMLAdapter implements ISAMLValidator {
     }
   }
 
+  // El objeto `extract` proviene de samlify (parseLoginResponse) y expone las
+  // aserciones con claves dinámicas segun el IdP; se accede por mapeo de atributos.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private mapAttributes(extract: any, idpConfig: IdPConfig): SAMLAttributes {
     const attributeMapping = idpConfig.attributeMapping || {
       email: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
@@ -538,27 +547,7 @@ export class SAMLAdapter implements ISAMLValidator {
     };
   }
 
-  async validateSignature(
-    _samlResponse: string,
-    _certificateFingerprint: string
-  ): Promise<boolean> {
-    // La validación de firma se realiza automáticamente en parseLoginResponse
-    // Este método es para validaciones adicionales si es necesario
-    return true;
-  }
-
   getIdPList(): string[] {
     return Array.from(this.idps.keys());
-  }
-
-  getIdPConfig(idpName: string): IdPConfig | null {
-    const idpData = this.idps.get(idpName);
-    return idpData?.config || null;
-  }
-}
-
-export class SAMLAdapterFactory {
-  static create(spEntityId: string, acsUrl: string, sloUrl?: string): SAMLAdapter {
-    return new SAMLAdapter(spEntityId, acsUrl, sloUrl);
   }
 }

@@ -66,7 +66,7 @@ export class AuthController {
       // IdP-initiated / ACS multi-tenant: el IdP da clic en su panel y postea
       // aquí sin `idp` ni sesión previa).
       const idp =
-        (request.query as any)?.idp ||
+        (request.query as { idp?: string })?.idp ||
         request.session?.idp ||
         this.ssoAuthService.resolveIdPByIssuer(SAMLResponse);
       if (!idp) {

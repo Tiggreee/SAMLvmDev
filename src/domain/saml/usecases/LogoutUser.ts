@@ -2,6 +2,7 @@
 
 import { ISessionRepository, IAuditLogRepository } from '../repositories/SAMLRepositories';
 import { SessionException } from '../exceptions/SAMLExceptions';
+import { SessionData } from '@shared/types/saml.types';
 
 export class LogoutUser {
   constructor(
@@ -64,7 +65,7 @@ export class LogoutUser {
     }
   }
 
-  private async generateSAMLLogoutRequest(session: any): Promise<string> {
+  private async generateSAMLLogoutRequest(session: SessionData): Promise<string> {
     // Implementación en el adaptador SAML
     // Por ahora, retornamos una URL placeholder
     return `${process.env.SAML_SP_SLO_URL || 'https://localhost:3000/auth/saml/logout'}?sessionIndex=${session.id}`;
