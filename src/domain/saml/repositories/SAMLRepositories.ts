@@ -25,4 +25,7 @@ export interface IAuditLogRepository {
   findByEventType(eventType: string, limit?: number): Promise<AuditLog[]>;
   findByDateRange(startDate: Date, endDate: Date): Promise<AuditLog[]>;
   deleteOlderThan(days: number): Promise<number>;
+  // Cuenta autenticaciones exitosas (LOGIN_SUCCESS) para un conjunto de IdP.
+  // Base facturable del uso por tenant. `since` acota el periodo de cobro.
+  countAuthentications(idpNames: string[], since?: Date): Promise<number>;
 }

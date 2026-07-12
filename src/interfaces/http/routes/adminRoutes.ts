@@ -48,4 +48,5 @@ export async function adminRoutes(
 
   fastify.post('/tenants/:id/idps', (req, reply) => adminController.registerIdP(req, reply));
   fastify.get('/tenants/:id/idps', (req, reply) => adminController.listIdPs(req, reply));
+  fastify.get('/tenants/:id/usage', (req, reply) => adminController.getUsage(req, reply));
 }

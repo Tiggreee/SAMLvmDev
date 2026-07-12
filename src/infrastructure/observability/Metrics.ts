@@ -33,3 +33,12 @@ export const activeSessions = new Gauge({
   help: 'Number of active authenticated sessions (in-process gauge)',
   registers: [registry],
 });
+
+// Autenticaciones por tenant y resultado. Base para dashboards de uso y para
+// la medición de consumo (billing) por organización cliente.
+export const tenantAuthentications = new Counter({
+  name: 'saml_tenant_authentications_total',
+  help: 'Authentications per tenant and result',
+  labelNames: ['tenant', 'result'] as const,
+  registers: [registry],
+});

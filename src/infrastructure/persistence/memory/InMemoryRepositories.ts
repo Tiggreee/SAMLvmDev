@@ -97,4 +97,15 @@ export class InMemoryAuditLogRepository implements IAuditLogRepository {
     this.logs = this.logs.filter((l) => l.timestamp > cutoff);
     return before - this.logs.length;
   }
+
+  async countAuthentications(idpNames: string[], since?: Date): Promise<number> {
+    const allowed = new Set(idpNames);
+    return this.logs.filter(
+      (l) =>
+        l.eventType === 'LOGIN_SUCCESS' &&
+        l.idpName !== undefined &&
+        allowed.has(l.idpName) &&
+        (!since || l.timestamp >= since)
+    ).length;
+  }
 }

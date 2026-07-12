@@ -137,6 +137,41 @@ export class SAMLAdapter implements ISAMLValidator {
     return null;
   }
 
+  // Variante multi-tenant: resuelve el IdP emisor considerando únicamente el
+  // conjunto de IdP permitidos (los de un tenant). Garantiza aislamiento: una
+  // respuesta de un IdP de otro tenant no valida en el ACS de este tenant.
+  resolveIdPByIssuerScoped(
+    encodedSAMLResponse: string,
+    allowedIdpIds: string[]
+  ): string | null {
+    const issuer = this.extractIssuer(encodedSAMLResponse);
+    if (!issuer) {
+      return null;
+    }
+    const allowed = new Set(allowedIdpIds);
+
+    for (const [id, { config }] of this.idps) {
+      if (allowed.has(id) && config.entityID === issuer) {
+        return id;
+      }
+    }
+
+    if (process.env.OIN_TEST_MODE === 'true') {
+      for (const [id, { config }] of this.idps) {
+        if (allowed.has(id) && this.isFuzzyIssuerMatch(config.entityID, issuer)) {
+          return id;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // Devuelve el tenantId asociado a un IdP registrado, o null si es global.
+  getIdPTenant(idpName: string): string | null {
+    return this.idps.get(idpName)?.config.tenantId ?? null;
+  }
+
   // Determina si dos Issuers pertenecen a la misma familia de IdP.
   // Para Okta: ambos tienen patrón http(s)://www.okta.com/exk*
   // Esto permite aceptar instancias temporales del OIN tester que comparten

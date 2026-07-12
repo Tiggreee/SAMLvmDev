@@ -6,7 +6,10 @@
 
 import { randomUUID, randomBytes, createHash } from 'crypto';
 import { ITenantRepository } from '@domain/saml/repositories/ITenantRepository';
-import { ISAMLConfigRepository } from '@domain/saml/repositories/SAMLRepositories';
+import {
+  ISAMLConfigRepository,
+  IAuditLogRepository,
+} from '@domain/saml/repositories/SAMLRepositories';
 import { Tenant, IdPConfig } from '@shared/types/saml.types';
 
 export interface TenantView {
@@ -19,6 +22,13 @@ export interface TenantView {
 
 export interface CreatedTenant extends TenantView {
   apiKey: string; // texto plano, solo en la creación
+}
+
+export interface TenantUsage {
+  tenantId: string;
+  authentications: number;
+  periodDays: number;
+  since: string;
 }
 
 export function hashApiKey(apiKey: string): string {
@@ -38,7 +48,12 @@ function slugify(name: string): string {
 export class TenantService {
   constructor(
     private tenantRepository: ITenantRepository,
-    private samlConfigRepository: ISAMLConfigRepository
+    private samlConfigRepository: ISAMLConfigRepository,
+    // Registra el IdP en el validador SAML para que sus respuestas puedan
+    // verificarse. Se inyecta desde el composition root para no acoplar la
+    // aplicación al adaptador de infraestructura.
+    private registerIdPInValidator?: (config: IdPConfig) => void,
+    private auditLogRepository?: IAuditLogRepository
   ) {}
 
   async createTenant(name: string): Promise<CreatedTenant> {
@@ -71,6 +86,11 @@ export class TenantService {
 
   async getTenant(id: string): Promise<TenantView | null> {
     const tenant = await this.tenantRepository.findById(id);
+    return tenant ? this.toView(tenant) : null;
+  }
+
+  async getTenantBySlug(slug: string): Promise<TenantView | null> {
+    const tenant = await this.tenantRepository.findBySlug(slug);
     return tenant ? this.toView(tenant) : null;
   }
 
@@ -116,12 +136,39 @@ export class TenantService {
     }
     const scoped: IdPConfig = { ...config, tenantId };
     await this.samlConfigRepository.save(scoped);
+    if (this.registerIdPInValidator) {
+      this.registerIdPInValidator(scoped);
+    }
     return scoped;
   }
 
   async listIdPs(tenantId: string): Promise<IdPConfig[]> {
     const all = await this.samlConfigRepository.getAll();
     return all.filter((c) => c.tenantId === tenantId);
+  }
+
+  // Uso facturable: autenticaciones exitosas del tenant en los últimos N días,
+  // agregadas desde el registro de auditoría (fuente de verdad persistida).
+  async getUsage(tenantId: string, periodDays = 30): Promise<TenantUsage | null> {
+    const tenant = await this.tenantRepository.findById(tenantId);
+    if (!tenant) {
+      return null;
+    }
+    const since = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
+    let authentications = 0;
+    if (this.auditLogRepository) {
+      const idps = await this.listIdPs(tenantId);
+      authentications = await this.auditLogRepository.countAuthentications(
+        idps.map((c) => c.id),
+        since
+      );
+    }
+    return {
+      tenantId,
+      authentications,
+      periodDays,
+      since: since.toISOString(),
+    };
   }
 
   private async ensureUniqueSlug(base: string): Promise<string> {

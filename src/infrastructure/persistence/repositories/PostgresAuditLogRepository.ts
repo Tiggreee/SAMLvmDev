@@ -92,6 +92,22 @@ export class PostgresAuditLogRepository implements IAuditLogRepository {
     return result.rowCount ?? 0;
   }
 
+  async countAuthentications(idpNames: string[], since?: Date): Promise<number> {
+    if (idpNames.length === 0) {
+      return 0;
+    }
+    const params: unknown[] = [idpNames];
+    let sql = `SELECT COUNT(*)::int AS n FROM audit_logs
+               WHERE event_type = 'LOGIN_SUCCESS' AND idp_name = ANY($1)`;
+    if (since) {
+      params.push(since);
+      sql += ` AND timestamp >= $2`;
+    }
+    const result = await this.db.query(sql, params);
+    const row = result.rows[0] as { n: number } | undefined;
+    return row?.n ?? 0;
+  }
+
   private mapRow(row: AuditLogRow): AuditLog {
     return {
       id: row.id,

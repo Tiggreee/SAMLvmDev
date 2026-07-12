@@ -145,4 +145,26 @@ describe('Admin panel (multi-tenant)', () => {
     expect(a.slug).toBe('initech');
     expect(b.slug).toBe('initech-1');
   });
+
+  it('expone el uso facturable de un tenant (0 autenticaciones al inicio)', async () => {
+    const t = await app
+      .inject({
+        method: 'POST',
+        url: '/admin/tenants',
+        headers: { 'x-admin-key': ADMIN_KEY },
+        payload: { name: 'Soylent' },
+      })
+      .then((r) => r.json());
+
+    const usage = await app.inject({
+      method: 'GET',
+      url: `/admin/tenants/${t.id}/usage?days=30`,
+      headers: { 'x-admin-key': ADMIN_KEY },
+    });
+    expect(usage.statusCode).toBe(200);
+    const body = usage.json();
+    expect(body.tenantId).toBe(t.id);
+    expect(body.authentications).toBe(0);
+    expect(body.periodDays).toBe(30);
+  });
 });

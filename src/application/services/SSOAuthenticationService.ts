@@ -49,6 +49,12 @@ export class SSOAuthenticationService {
     return this.samlAdapter.resolveIdPByIssuer(samlResponse);
   }
 
+  // Resolución multi-tenant: limita el descubrimiento del IdP al conjunto de
+  // IdP del tenant, garantizando aislamiento entre organizaciones.
+  resolveIdPByIssuerScoped(samlResponse: string, allowedIdpIds: string[]): string | null {
+    return this.samlAdapter.resolveIdPByIssuerScoped(samlResponse, allowedIdpIds);
+  }
+
   async processSAMLResponseAndCreateSession(
     samlResponse: string,
     idpName: string,

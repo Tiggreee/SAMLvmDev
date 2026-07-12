@@ -8,5 +8,6 @@ declare module '@fastify/session' {
     email?: string;
     samlSessionId?: string;
     authenticated?: boolean;
+    tenantId?: string;
   }
 }

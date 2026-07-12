@@ -54,6 +54,8 @@ import {
 } from '@infrastructure/config/idp-configs/env-idp.config';
 import { AdminController } from '@interfaces/http/controllers/AdminController';
 import { adminRoutes } from '@interfaces/http/routes/adminRoutes';
+import { TenantAuthController } from '@interfaces/http/controllers/TenantAuthController';
+import { tenantAuthRoutes } from '@interfaces/http/routes/tenantAuthRoutes';
 import type { IdPConfig } from '@shared/types/saml.types';
 
 /**
@@ -256,13 +258,33 @@ export async function buildApp(
     );
 
     // Servicio y controlador de administración (multi-tenant)
-    const tenantService = new TenantService(tenantRepo, samlConfigRepo);
+    const tenantService = new TenantService(
+      tenantRepo,
+      samlConfigRepo,
+      (config) => registerIdPSafe(config),
+      auditLogRepo
+    );
     const adminController = new AdminController(tenantService);
+
+    // Controlador SSO por tenant (rutas /saml/t/:slug/*)
+    const tenantAuthController = new TenantAuthController(
+      tenantService,
+      ssoAuthService,
+      auditService
+    );
 
     // Registrar rutas
     await fastify.register(async (fastify) => {
       await authRoutes(fastify, authController);
     });
+
+    // Rutas SSO multi-tenant bajo /saml/t/:slug/*
+    await fastify.register(
+      async (fastify) => {
+        await tenantAuthRoutes(fastify, tenantAuthController);
+      },
+      { prefix: '/saml' }
+    );
 
     // Rutas de administración bajo /admin/*
     await fastify.register(

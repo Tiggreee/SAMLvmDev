@@ -95,4 +95,15 @@ export class AdminController {
     const idps = await this.tenantService.listIdPs(id);
     return reply.status(200).send({ idps });
   }
+
+  async getUsage(request: FastifyRequest, reply: FastifyReply) {
+    const { id } = request.params as { id: string };
+    const { days } = request.query as { days?: string };
+    const periodDays = days ? Math.max(1, Math.min(365, parseInt(days, 10) || 30)) : 30;
+    const usage = await this.tenantService.getUsage(id, periodDays);
+    if (!usage) {
+      return reply.status(404).send({ error: 'Not found', message: `Tenant ${id} not found` });
+    }
+    return reply.status(200).send(usage);
+  }
 }
