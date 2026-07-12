@@ -15,9 +15,11 @@ import { SAMLAdapter } from '@infrastructure/saml/SAMLAdapter';
 import { SSOAuthenticationService } from '@application/services/SSOAuthenticationService';
 import { SAMLMetadataService } from '@application/services/SAMLMetadataService';
 import { AuditService } from '@application/services/AuditService';
+import { TenantService } from '@application/services/TenantService';
 import { createPostgresPool } from '@infrastructure/persistence/database/PostgresPool';
 import { PostgresAuditLogRepository } from '@infrastructure/persistence/repositories/PostgresAuditLogRepository';
 import { PostgresSAMLConfigRepository } from '@infrastructure/persistence/repositories/PostgresSAMLConfigRepository';
+import { PostgresTenantRepository } from '@infrastructure/persistence/repositories/PostgresTenantRepository';
 import { connectRedis, buildRedisUrl } from '@infrastructure/persistence/redis/RedisClient';
 import { RedisSessionRepository } from '@infrastructure/persistence/repositories/RedisSessionRepository';
 import {
@@ -25,11 +27,13 @@ import {
   InMemorySessionRepository,
   InMemoryAuditLogRepository,
 } from '@infrastructure/persistence/memory/InMemoryRepositories';
+import { InMemoryTenantRepository } from '@infrastructure/persistence/memory/InMemoryTenantRepository';
 import type {
   IAuditLogRepository,
   ISessionRepository,
   ISAMLConfigRepository,
 } from '@domain/saml/repositories/SAMLRepositories';
+import type { ITenantRepository } from '@domain/saml/repositories/ITenantRepository';
 import {
   createAzureADConfig,
 } from '@infrastructure/config/idp-configs/azure-ad.config';
@@ -48,6 +52,8 @@ import {
 import {
   createEnvIdPConfig,
 } from '@infrastructure/config/idp-configs/env-idp.config';
+import { AdminController } from '@interfaces/http/controllers/AdminController';
+import { adminRoutes } from '@interfaces/http/routes/adminRoutes';
 import type { IdPConfig } from '@shared/types/saml.types';
 
 /**
@@ -67,7 +73,11 @@ export interface BuildAppOptions {
  */
 async function createPersistence(
   fastify: FastifyInstance
-): Promise<{ audit: IAuditLogRepository; samlConfig: ISAMLConfigRepository }> {
+): Promise<{
+  audit: IAuditLogRepository;
+  samlConfig: ISAMLConfigRepository;
+  tenant: ITenantRepository;
+}> {
   const databaseUrl = process.env.DATABASE_URL;
   const isProduction = process.env.NODE_ENV === 'production';
 
@@ -83,6 +93,7 @@ async function createPersistence(
     return {
       audit: new InMemoryAuditLogRepository(),
       samlConfig: new InMemorySAMLConfigRepository(),
+      tenant: new InMemoryTenantRepository(),
     };
   }
 
@@ -92,10 +103,12 @@ async function createPersistence(
     await audit.initialize();
     const samlConfig = new PostgresSAMLConfigRepository(pool);
     await samlConfig.initialize();
+    const tenant = new PostgresTenantRepository(pool);
+    await tenant.initialize();
     fastify.addHook('onClose', async () => {
       await pool.end();
     });
-    return { audit, samlConfig };
+    return { audit, samlConfig, tenant };
   } catch (error) {
     if (isProduction) {
       throw error;
@@ -108,6 +121,7 @@ async function createPersistence(
     return {
       audit: new InMemoryAuditLogRepository(),
       samlConfig: new InMemorySAMLConfigRepository(),
+      tenant: new InMemoryTenantRepository(),
     };
   }
 }
@@ -146,7 +160,7 @@ export async function buildApp(
   const fastify = await createFastifyServer();
 
     // Inicializar repositorios
-    const { audit: auditLogRepo, samlConfig: samlConfigRepo } =
+    const { audit: auditLogRepo, samlConfig: samlConfigRepo, tenant: tenantRepo } =
       await createPersistence(fastify);
     const sessionRepo = await createSessionRepository(fastify);
 
@@ -241,10 +255,22 @@ export async function buildApp(
       auditService
     );
 
+    // Servicio y controlador de administración (multi-tenant)
+    const tenantService = new TenantService(tenantRepo, samlConfigRepo);
+    const adminController = new AdminController(tenantService);
+
     // Registrar rutas
     await fastify.register(async (fastify) => {
       await authRoutes(fastify, authController);
     });
+
+    // Rutas de administración bajo /admin/*
+    await fastify.register(
+      async (fastify) => {
+        await adminRoutes(fastify, adminController);
+      },
+      { prefix: '/admin' }
+    );
 
     return fastify;
 }

@@ -51,6 +51,9 @@ const envSchema = z.object({
   // OIN test mode (fuzzy cert matching — must be false in production)
   OIN_TEST_MODE: z.enum(['true', 'false']).default('false'),
 
+  // Admin panel master key (habilita /admin/* cuando está presente)
+  ADMIN_API_KEY: z.string().min(24).optional(),
+
   // CORS
   CORS_ORIGIN: z.string().optional(),
 

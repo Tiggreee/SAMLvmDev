@@ -115,6 +115,21 @@ export interface IdPConfig {
   attributeMapping?: Record<string, string>;
   signatureAlgorithm?: string;
   digestAlgorithm?: string;
+  tenantId?: string;
+}
+
+/**
+ * Organización cliente. Cada tenant configura sus propios IdP y recibe una
+ * clave de API única (se almacena hasheada; el texto plano se muestra una sola
+ * vez en la creación).
+ */
+export interface Tenant {
+  id: string;
+  name: string;
+  slug: string;
+  apiKeyHash: string;
+  enabled: boolean;
+  createdAt: Date;
 }
 
 export interface SAMLValidationResult {
