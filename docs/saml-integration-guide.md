@@ -56,7 +56,7 @@ Assign users or groups from your identity provider to the SAMLvmDev application.
 - **"ACS URL mismatch"**: Confirm ACS endpoint is exactly as registered
 
 ### Support
-For integration assistance, contact: support@tigre-labs.local
+For integration assistance, contact: hola@tigrelabs.xyz
 
 ## References
 - [OASIS SAML 2.0 Specification](https://wiki.oasis-open.org/security)

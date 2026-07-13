@@ -430,12 +430,22 @@ docker compose up -d
 
 ## Roadmap
 
+### Puesta en producción (secuencia)
+1. **Deploy a Azure** → `sso.tigrelabs.xyz` vivo.
+2. **DNS CNAME** → dominio estable registrado en los IdP.
+3. **Primer tenant real** → alguien autentica de verdad.
+4. **Stripe test mode** → se mide ese consumo.
+5. **Stripe live mode** → monetización.
+
+### Capacidades
+- [x] API de administración (multi-tenant)
+- [x] Configuración multi-tenant
+- [x] Medición de uso por tenant + facturación por consumo (Stripe)
+- [x] Enrutamiento SAML aislado por tenant
 - [ ] Encriptación de aserciones
 - [ ] Single Logout (SLO) completo
 - [ ] Mapeo dinámico de atributos por usuario
 - [ ] Integración MFA
-- [ ] API de administración
-- [ ] Configuración multi-tenant
 
 ## Licencia
 
