@@ -18,6 +18,12 @@ certificates/*.key
 certificates/*.pem
 certificates/*.p12
 certificates/*.pfx
+certificates/**/*.crt
+certificates/**/*.key
+certificates/**/*.pem
+
+# Local tooling (binarios de desarrollo, no versionar)
+.tools/
 
 # Test fixtures temporales
 tests/.tmp/
