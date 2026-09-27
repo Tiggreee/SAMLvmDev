@@ -20,7 +20,8 @@ export class ProcessSAMLResponse {
     encodedSAMLResponse: string,
     idpName: string,
     ipAddress: string,
-    userAgent: string
+    userAgent: string,
+    expectedRequestId?: string
   ): Promise<{
     sessionId: string;
     userId: string;
@@ -38,7 +39,8 @@ export class ProcessSAMLResponse {
       const validation = await this.samlValidator.validateResponse(
         encodedSAMLResponse,
         '',
-        idpName
+        idpName,
+        expectedRequestId
       );
 
       if (!validation.isValid || !validation.attributes) {
@@ -50,6 +52,10 @@ export class ProcessSAMLResponse {
       }
 
       const attributes = validation.attributes;
+      if (!validation.assertionId || !validation.assertionExpiresAt ||
+        !(await this.sessionRepository.reserveAssertion(idpName, validation.assertionId, validation.assertionExpiresAt))) {
+        throw new InvalidSAMLResponseException('SAML assertion has already been used');
+      }
 
       // Crear sesión
       const sessionId = this.generateSessionId();

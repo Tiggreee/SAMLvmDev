@@ -3,6 +3,7 @@ import '@fastify/session';
 declare module '@fastify/session' {
   interface FastifySessionObject {
     relayState?: string;
+    samlRequestId?: string;
     idp?: string;
     userId?: string;
     email?: string;

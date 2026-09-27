@@ -12,6 +12,7 @@ export interface ISAMLValidator {
   validateResponse(
     encodedSAMLResponse: string,
     relayState: string,
-    idpName: string
+    idpName: string,
+    expectedRequestId?: string
   ): Promise<SAMLValidationResult>;
 }

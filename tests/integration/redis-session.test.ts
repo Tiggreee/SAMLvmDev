@@ -23,7 +23,8 @@ class FakeRedis implements RedisClientLike {
     return this.alive(key) ? this.store.get(key)!.value : null;
   }
 
-  async set(key: string, value: string, options?: { EX?: number }): Promise<unknown> {
+  async set(key: string, value: string, options?: { EX?: number; NX?: boolean }): Promise<unknown> {
+    if (options?.NX && this.alive(key)) return null;
     const expiresAt = options?.EX ? Date.now() + options.EX * 1000 : null;
     this.store.set(key, { value, expiresAt });
     return 'OK';
@@ -92,6 +93,19 @@ describe('RedisSessionRepository (fake redis)', () => {
   beforeEach(() => {
     redis = new FakeRedis();
     repo = new RedisSessionRepository(redis);
+  });
+
+  it('reserva una aserción una sola vez por IdP, incluso en paralelo', async () => {
+    const expiresAt = new Date(Date.now() + 60_000);
+
+    expect(await Promise.all([
+      repo.reserveAssertion('mock-idp', 'assertion-1', expiresAt),
+      repo.reserveAssertion('mock-idp', 'assertion-1', expiresAt),
+    ])).toEqual([true, false]);
+    expect(await repo.reserveAssertion('other-idp', 'assertion-1', expiresAt)).toBe(true);
+
+    redis.forceExpire('saml:assertion:mock-idp:assertion-1');
+    expect(await repo.reserveAssertion('mock-idp', 'assertion-1', expiresAt)).toBe(true);
   });
 
   it('guarda y recupera una sesión por id, reviviendo las fechas', async () => {

@@ -8,7 +8,7 @@ import { createClient } from 'redis';
 
 export interface RedisClientLike {
   get(key: string): Promise<string | null>;
-  set(key: string, value: string, options?: { EX?: number }): Promise<unknown>;
+  set(key: string, value: string, options?: { EX?: number; NX?: boolean }): Promise<unknown>;
   del(key: string | string[]): Promise<number>;
   sAdd(key: string, member: string): Promise<number>;
   sRem(key: string, member: string): Promise<number>;

@@ -12,6 +12,7 @@ export interface ISAMLConfigRepository {
 
 export interface ISessionRepository {
   save(session: SessionData): Promise<void>;
+  reserveAssertion(idpName: string, assertionId: string, expiresAt: Date): Promise<boolean>;
   findById(sessionId: string): Promise<SessionData | null>;
   findByUserId(userId: string): Promise<SessionData[]>;
   delete(sessionId: string): Promise<void>;

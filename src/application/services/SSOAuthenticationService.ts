@@ -37,6 +37,7 @@ export class SSOAuthenticationService {
   async initiateLogin(idpName: string): Promise<{
     samlRequest: string;
     relayState: string;
+    requestId: string;
     redirectUrl: string;
   }> {
     return this.initiateSSOLogin.execute(idpName);
@@ -59,7 +60,8 @@ export class SSOAuthenticationService {
     samlResponse: string,
     idpName: string,
     ipAddress: string,
-    userAgent: string
+    userAgent: string,
+    expectedRequestId?: string
   ): Promise<{
     sessionId: string;
     userId: string;
@@ -69,7 +71,8 @@ export class SSOAuthenticationService {
       samlResponse,
       idpName,
       ipAddress,
-      userAgent
+      userAgent,
+      expectedRequestId
     );
 
     return {

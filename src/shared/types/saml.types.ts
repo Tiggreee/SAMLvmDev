@@ -139,6 +139,8 @@ export interface SAMLValidationResult {
   warnings: string[];
   attributes?: SAMLAttributes;
   sessionIndex?: string;
+  assertionId?: string;
+  assertionExpiresAt?: Date;
 }
 
 export interface AuditLog {

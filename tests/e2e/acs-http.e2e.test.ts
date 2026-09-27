@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { spawnSync } from 'child_process';
 import { mkdirSync, readFileSync, existsSync } from 'fs';
 import { dirname, resolve } from 'path';
@@ -98,22 +98,90 @@ describe('SAML ACS HTTP flow (signed, form-urlencoded)', () => {
     process.env.SAML_SP_ACS_URL = ACS_URL;
 
     ensureIdpCerts();
-    const idp = buildMockIdP();
-    const sp = buildReferenceSP();
-    const { context } = await idp.createLoginResponse(
-      sp,
+    app = await buildApp({ additionalIdPs: [mockIdPConfig()] });
+    await app.ready();
+  });
+
+  beforeEach(async () => {
+    const { context } = await buildMockIdP().createLoginResponse(
+      buildReferenceSP(),
       null,
       'post',
       { email: USER_EMAIL }
     );
     signedResponse = context;
-
-    app = await buildApp({ additionalIdPs: [mockIdPConfig()] });
-    await app.ready();
   });
 
   afterAll(async () => {
     await app.close();
+  });
+
+  it('envía RelayState al IdP al iniciar el login', async () => {
+    const res = await app.inject({ method: 'GET', url: `/saml/login?idp=${IDP_NAME}` });
+
+    expect(res.statusCode).toBe(302);
+    expect(new URL(String(res.headers.location)).searchParams.get('RelayState')).toBeTruthy();
+  });
+
+  it('rechaza un RelayState que no corresponde a la sesión iniciada', async () => {
+    const login = await app.inject({ method: 'GET', url: `/saml/login?idp=${IDP_NAME}` });
+    const setCookie = login.headers['set-cookie'];
+    const cookie = (Array.isArray(setCookie) ? setCookie[0] : String(setCookie)).split(';')[0];
+    const res = await app.inject({
+      method: 'POST',
+      url: `/saml/acs?idp=${IDP_NAME}`,
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+      payload: new URLSearchParams({
+        SAMLResponse: signedResponse,
+        RelayState: Buffer.from('/welcome', 'utf-8').toString('base64'),
+      }).toString(),
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rechaza un InResponseTo firmado de otra solicitud', async () => {
+    const login = await app.inject({ method: 'GET', url: `/saml/login?idp=${IDP_NAME}` });
+    const relayState = new URL(String(login.headers.location)).searchParams.get('RelayState')!;
+    const setCookie = login.headers['set-cookie'];
+    const cookie = (Array.isArray(setCookie) ? setCookie[0] : String(setCookie)).split(';')[0];
+    const { context } = await buildMockIdP().createLoginResponse(
+      buildReferenceSP(),
+      { extract: { request: { id: '_other-request' } } },
+      'post',
+      { email: USER_EMAIL }
+    );
+    const res = await app.inject({
+      method: 'POST',
+      url: `/saml/acs?idp=${IDP_NAME}`,
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+      payload: new URLSearchParams({ SAMLResponse: context, RelayState: relayState }).toString(),
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('acepta la respuesta firmada para la solicitud iniciada en la sesión', async () => {
+    const login = await app.inject({ method: 'GET', url: `/saml/login?idp=${IDP_NAME}` });
+    const redirect = new URL(String(login.headers.location));
+    const relayState = redirect.searchParams.get('RelayState')!;
+    const idp = buildMockIdP();
+    const sp = buildReferenceSP();
+    const requestInfo = await idp.parseLoginRequest(sp, 'redirect', {
+      query: { SAMLRequest: redirect.searchParams.get('SAMLRequest')! },
+    });
+    const { context } = await idp.createLoginResponse(sp, requestInfo, 'post', { email: USER_EMAIL });
+    const setCookie = login.headers['set-cookie'];
+    const cookie = (Array.isArray(setCookie) ? setCookie[0] : String(setCookie)).split(';')[0];
+    const res = await app.inject({
+      method: 'POST',
+      url: `/saml/acs?idp=${IDP_NAME}`,
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+      payload: new URLSearchParams({ SAMLResponse: context, RelayState: relayState }).toString(),
+    });
+
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('/dashboard');
   });
 
   it('acepta el POST form-urlencoded del IdP, crea sesión y redirige', async () => {
@@ -153,6 +221,32 @@ describe('SAML ACS HTTP flow (signed, form-urlencoded)', () => {
 
     expect(res.statusCode).toBe(302);
     expect(res.headers.location).toBe('/welcome');
+  });
+
+  it('no redirige fuera del sitio con un RelayState externo', async () => {
+    const relayState = Buffer.from('https://external.example/collect', 'utf-8').toString('base64');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/saml/acs?idp=${IDP_NAME}`,
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      payload: new URLSearchParams({ SAMLResponse: signedResponse, RelayState: relayState }).toString(),
+    });
+
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('/dashboard');
+  });
+
+  it('rechaza una respuesta SAML firmada ya utilizada', async () => {
+    const payload = new URLSearchParams({ SAMLResponse: signedResponse }).toString();
+    const send = () => app.inject({
+      method: 'POST',
+      url: `/saml/acs?idp=${IDP_NAME}`,
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      payload,
+    });
+
+    expect((await send()).statusCode).toBe(302);
+    expect((await send()).statusCode).toBe(400);
   });
 
   it('rechaza con 400 una respuesta manipulada', async () => {

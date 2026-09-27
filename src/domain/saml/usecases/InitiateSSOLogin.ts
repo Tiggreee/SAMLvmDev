@@ -6,6 +6,7 @@ import { ISAMLConfigRepository } from '../repositories/SAMLRepositories';
 type SAMLRequestBuilder = (idpName: string) => {
   samlRequest: string;
   relayState: string;
+  requestId: string;
 };
 
 export class InitiateSSOLogin {
@@ -17,6 +18,7 @@ export class InitiateSSOLogin {
   async execute(idpName: string): Promise<{
     samlRequest: string;
     relayState: string;
+    requestId: string;
     redirectUrl: string;
   }> {
     // Obtener configuración del IdP
@@ -30,7 +32,7 @@ export class InitiateSSOLogin {
       throw new IdPConfigurationException(`IdP is disabled: ${idpName}`);
     }
 
-    const { relayState, samlRequest } = this.buildSAMLRequest(idpName);
+    const { relayState, samlRequest, requestId } = this.buildSAMLRequest(idpName);
     const redirectUrl = /^https?:\/\//i.test(samlRequest)
       ? samlRequest
       : `${idpConfig.singleSignOnServiceUrl}?SAMLRequest=${encodeURIComponent(samlRequest)}&RelayState=${encodeURIComponent(relayState)}`;
@@ -38,6 +40,7 @@ export class InitiateSSOLogin {
     return {
       samlRequest,
       relayState,
+      requestId,
       redirectUrl,
     };
   }

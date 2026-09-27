@@ -5,6 +5,7 @@ import { SSOAuthenticationService } from '@application/services/SSOAuthenticatio
 import { SAMLMetadataService } from '@application/services/SAMLMetadataService';
 import { AuditService } from '@application/services/AuditService';
 import { samlValidationTotal, activeSessions } from '@infrastructure/observability/Metrics';
+import { getRelayStateRedirect } from './RelayStateRedirect';
 
 export class AuthController {
   constructor(
@@ -32,6 +33,7 @@ export class AuthController {
 
       // Guardar RelayState en sesión para verificación posterior
       request.session.relayState = result.relayState;
+      request.session.samlRequestId = result.requestId;
       request.session.idp = idp;
 
       return reply.status(302).redirect(result.redirectUrl);
@@ -51,7 +53,7 @@ export class AuthController {
     try {
       const { SAMLResponse, RelayState } = request.body as {
         SAMLResponse: string;
-        RelayState: string;
+        RelayState?: string;
       };
 
       if (!SAMLResponse) {
@@ -76,6 +78,11 @@ export class AuthController {
         });
       }
 
+      const redirectUrl = getRelayStateRedirect(RelayState, request.session?.relayState);
+      if (redirectUrl === null) {
+        return reply.status(400).send({ error: 'Invalid RelayState' });
+      }
+
       const ipAddress = request.ip;
       const userAgent = request.headers['user-agent'] || 'Unknown';
 
@@ -84,7 +91,8 @@ export class AuthController {
         SAMLResponse,
         idp,
         ipAddress,
-        userAgent
+        userAgent,
+        request.session?.samlRequestId
       );
 
       // Crear sesión segura
@@ -93,6 +101,8 @@ export class AuthController {
       request.session.samlSessionId = result.sessionId;
       request.session.idp = idp;
       request.session.authenticated = true;
+      request.session.relayState = undefined;
+      request.session.samlRequestId = undefined;
 
       // Log de auditoría
       await this.auditService.logLoginAttempt(
@@ -104,11 +114,6 @@ export class AuthController {
 
       samlValidationTotal.labels(idp, 'success').inc();
       activeSessions.inc();
-
-      // Redireccionar al dashboard o RelayState
-      const redirectUrl = RelayState
-        ? Buffer.from(RelayState, 'base64').toString('utf-8')
-        : '/dashboard';
 
       return reply.status(302).redirect(redirectUrl);
     } catch (error) {

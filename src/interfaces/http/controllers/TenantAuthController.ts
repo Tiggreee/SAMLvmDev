@@ -9,6 +9,7 @@ import { SSOAuthenticationService } from '@application/services/SSOAuthenticatio
 import { AuditService } from '@application/services/AuditService';
 import { BillingService } from '@application/services/BillingService';
 import { tenantAuthentications } from '@infrastructure/observability/Metrics';
+import { getRelayStateRedirect } from './RelayStateRedirect';
 
 export class TenantAuthController {
   constructor(
@@ -39,6 +40,7 @@ export class TenantAuthController {
     try {
       const result = await this.ssoAuthService.initiateLogin(idp);
       request.session.relayState = result.relayState;
+      request.session.samlRequestId = result.requestId;
       request.session.idp = idp;
       request.session.tenantId = tenant.id;
       return reply.status(302).redirect(result.redirectUrl);
@@ -77,6 +79,11 @@ export class TenantAuthController {
       });
     }
 
+    const redirectUrl = getRelayStateRedirect(RelayState, request.session?.relayState);
+    if (redirectUrl === null) {
+      return reply.status(400).send({ error: 'Invalid RelayState' });
+    }
+
     const ipAddress = request.ip;
     const userAgent = request.headers['user-agent'] || 'Unknown';
 
@@ -85,7 +92,8 @@ export class TenantAuthController {
         SAMLResponse,
         idp,
         ipAddress,
-        userAgent
+        userAgent,
+        request.session?.samlRequestId
       );
       request.session.userId = result.userId;
       request.session.email = result.email;
@@ -93,6 +101,8 @@ export class TenantAuthController {
       request.session.idp = idp;
       request.session.tenantId = tenant.id;
       request.session.authenticated = true;
+      request.session.relayState = undefined;
+      request.session.samlRequestId = undefined;
 
       await this.auditService.logLoginAttempt(result.email, idp, ipAddress, true);
       tenantAuthentications.labels(tenant.slug, 'success').inc();
@@ -104,9 +114,6 @@ export class TenantAuthController {
           .catch(() => undefined);
       }
 
-      const redirectUrl = RelayState
-        ? Buffer.from(RelayState, 'base64').toString('utf-8')
-        : '/dashboard';
       return reply.status(302).redirect(redirectUrl);
     } catch (error) {
       await this.auditService.logLoginAttempt(

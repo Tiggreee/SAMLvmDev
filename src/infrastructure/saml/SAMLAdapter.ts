@@ -2,6 +2,7 @@
 
 import samlify from 'samlify';
 import { DOMParser } from '@xmldom/xmldom';
+import { randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
 import { deflateRawSync, inflateRawSync } from 'zlib';
 import { InvalidSAMLResponseException } from '@domain/saml/exceptions/SAMLExceptions';
@@ -306,17 +307,20 @@ export class SAMLAdapter implements ISAMLValidator {
   generateSAMLRequest(idpName: string): {
     samlRequest: string;
     relayState: string;
+    requestId: string;
   } {
     const idpData = this.idps.get(idpName);
     if (!idpData) {
       throw new InvalidSAMLResponseException(`IdP not registered: ${idpName}`);
     }
 
-    const { id, context } = this.sp.createLoginRequest(idpData.idp, 'redirect');
+    const relayState = randomUUID();
+    const { id, context } = this.sp.createLoginRequest(idpData.idp, 'redirect', { relayState });
     
     return {
       samlRequest: this.enableNameIdAllowCreate(context),
-      relayState: id,
+      relayState,
+      requestId: id,
     };
   }
 
@@ -349,7 +353,8 @@ export class SAMLAdapter implements ISAMLValidator {
   async validateSAMLResponse(
     samlResponse: string,
     _relayState: string,
-    idpName: string
+    idpName: string,
+    expectedRequestId?: string
   ): Promise<SAMLValidationResult> {
     const idpData = this.idps.get(idpName);
     if (!idpData) {
@@ -410,7 +415,7 @@ export class SAMLAdapter implements ISAMLValidator {
         );
       }
 
-      const { extract } = await this.sp.parseLoginResponse(idpForValidation, 'post', {
+      const { extract, samlContent } = await this.sp.parseLoginResponse(idpForValidation, 'post', {
         body: { SAMLResponse: samlResponse },
       });
 
@@ -444,6 +449,28 @@ export class SAMLAdapter implements ISAMLValidator {
       const notOnOrAfter = notOnOrAfterRaw
         ? new Date(notOnOrAfterRaw).getTime()
         : Number.MAX_SAFE_INTEGER;
+      const assertions = new DOMParser().parseFromString(samlContent, 'text/xml')
+        .getElementsByTagNameNS('urn:oasis:names:tc:SAML:2.0:assertion', 'Assertion');
+      const assertionId = assertions.length === 1 ? assertions[0].getAttribute('ID') : null;
+
+      if (!assertionId) {
+        validationErrors.push('SAML assertion ID is missing or ambiguous');
+      }
+      if (!notOnOrAfterRaw || !Number.isFinite(notOnOrAfter)) {
+        validationErrors.push('Assertion expiration is required');
+      }
+      const confirmations = assertionId
+        ? assertions[0].getElementsByTagNameNS('urn:oasis:names:tc:SAML:2.0:assertion', 'SubjectConfirmationData')
+        : [];
+      const signedRequestIds = Array.from(confirmations, (node) => node.getAttribute('InResponseTo'));
+      const responseRequestId = extract.response?.inResponseTo || '';
+      if (expectedRequestId) {
+        if (responseRequestId !== expectedRequestId || !signedRequestIds.includes(expectedRequestId)) {
+          validationErrors.push('SAML response does not match the initiated request');
+        }
+      } else if (responseRequestId || signedRequestIds.some(Boolean)) {
+        validationErrors.push('Unexpected InResponseTo in unsolicited SAML response');
+      }
 
       if (notBefore && now < notBefore - clockSkew * 1000) {
         validationErrors.push('Assertion is not yet valid');
@@ -472,6 +499,8 @@ export class SAMLAdapter implements ISAMLValidator {
         warnings: validationWarnings,
         attributes,
         sessionIndex: extract.sessionIndex,
+        assertionId: assertionId!,
+        assertionExpiresAt: new Date(notOnOrAfter + clockSkew * 1000),
       };
     } catch (error) {
       return {
@@ -492,9 +521,10 @@ export class SAMLAdapter implements ISAMLValidator {
   validateResponse(
     encodedSAMLResponse: string,
     relayState: string,
-    idpName: string
+    idpName: string,
+    expectedRequestId?: string
   ): Promise<SAMLValidationResult> {
-    return this.validateSAMLResponse(encodedSAMLResponse, relayState, idpName);
+    return this.validateSAMLResponse(encodedSAMLResponse, relayState, idpName, expectedRequestId);
   }
 
   private generateSPMetadata(): string {

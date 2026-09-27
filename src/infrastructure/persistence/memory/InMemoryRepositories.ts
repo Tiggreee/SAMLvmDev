@@ -42,9 +42,19 @@ export class InMemorySAMLConfigRepository implements ISAMLConfigRepository {
 
 export class InMemorySessionRepository implements ISessionRepository {
   private readonly sessions = new Map<string, SessionData>();
+  private readonly usedAssertions = new Map<string, number>();
 
   async save(session: SessionData): Promise<void> {
     this.sessions.set(session.id, session);
+  }
+
+  async reserveAssertion(idpName: string, assertionId: string, expiresAt: Date): Promise<boolean> {
+    const key = `${idpName}:${assertionId}`;
+    if ((this.usedAssertions.get(key) ?? 0) > Date.now()) {
+      return false;
+    }
+    this.usedAssertions.set(key, expiresAt.getTime());
+    return true;
   }
 
   async findById(sessionId: string): Promise<SessionData | null> {

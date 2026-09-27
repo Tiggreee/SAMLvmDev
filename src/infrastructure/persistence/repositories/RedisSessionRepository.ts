@@ -24,6 +24,11 @@ export class RedisSessionRepository implements ISessionRepository {
     await this.redis.expire(this.userKey(session.userId), ttl);
   }
 
+  async reserveAssertion(idpName: string, assertionId: string, expiresAt: Date): Promise<boolean> {
+    const key = `saml:assertion:${idpName}:${assertionId}`;
+    return (await this.redis.set(key, '1', { EX: this.ttlSeconds(expiresAt), NX: true })) === 'OK';
+  }
+
   async findById(sessionId: string): Promise<SessionData | null> {
     const raw = await this.redis.get(this.sessionKey(sessionId));
     return raw ? this.deserialize(raw) : null;

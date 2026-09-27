@@ -449,4 +449,4 @@ docker compose up -d
 
 ## Licencia
 
-MIT. Ver [LICENSE](LICENSE).
+Copyright (c) 2026 Tigre Labs. Todos los derechos reservados. El código público está disponible solo para consulta; ver [LICENSE](LICENSE).
